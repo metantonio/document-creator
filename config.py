@@ -16,7 +16,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "model": "llama3",
         "api_key": "ollama",
         "temperature": 0.3,
-        "max_tokens": 0
+        "max_tokens": 4096
     },
     "cloud_config": {
         "name": "Cloud LLM (OpenAI / OpenRouter / Groq)",
@@ -24,7 +24,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "model": "gpt-4o",
         "api_key": "",
         "temperature": 0.3,
-        "max_tokens": 32000
+        "max_tokens": 4096
     }
 }
 
