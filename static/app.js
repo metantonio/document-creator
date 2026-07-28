@@ -117,6 +117,7 @@ function renderChatsList(chats) {
     chats.forEach(chat => {
         const item = document.createElement('div');
         item.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
+        item.setAttribute('data-chat-id', chat.id);
         item.onclick = () => selectChat(chat.id);
         
         item.innerHTML = `
@@ -140,19 +141,31 @@ async function createNewChat() {
             body: JSON.stringify({ title: 'New Conversation' })
         });
         const chat = await res.json();
-        await fetchChats();
-        selectChat(chat.id);
+        if (chat && chat.id) {
+            await fetchChats();
+            selectChat(chat.id);
+        }
     } catch (e) {
         console.error('Error creating chat:', e);
     }
 }
 
 async function selectChat(chatId) {
+    if (!chatId) return;
     currentChatId = chatId;
-    await fetchChats(); // update active class
+
+    // Immediately highlight active chat in sidebar DOM
+    document.querySelectorAll('.chat-item').forEach(item => {
+        const itemChatId = item.getAttribute('data-chat-id');
+        item.classList.toggle('active', itemChatId === chatId);
+    });
     
     try {
         const res = await fetch(`/api/chats/${chatId}`);
+        if (!res.ok) {
+            console.error(`Failed to fetch chat ${chatId}`);
+            return;
+        }
         const chat = await res.json();
         
         const titleEl = document.getElementById('currentChatTitle');
@@ -180,9 +193,10 @@ async function deleteChat(chatId) {
             currentChatId = null;
         }
         await fetchChats();
-        const chats = await (await fetch('/api/chats')).json();
-        if (chats.chats && chats.chats.length > 0) {
-            selectChat(chats.chats[0].id);
+        const res = await fetch('/api/chats');
+        const data = await res.json();
+        if (data.chats && data.chats.length > 0) {
+            selectChat(data.chats[0].id);
         } else {
             createNewChat();
         }
@@ -208,62 +222,80 @@ function updateActiveDocBadge() {
 
 function formatMessageContent(text) {
     if (!text) return '';
-    if (typeof marked !== 'undefined') {
-        let html = marked.parse(text);
-        return html.replace(/>\s*\n\s*</g, '><').trim();
+    try {
+        if (typeof marked !== 'undefined') {
+            let html = marked.parse(String(text));
+            return html.replace(/>\s*\n\s*</g, '><').trim();
+        }
+        return escapeHtml(String(text)).replace(/\n/g, '<br>');
+    } catch (e) {
+        console.error('Error formatting message text:', e);
+        return escapeHtml(String(text)).replace(/\n/g, '<br>');
     }
-    return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
 function renderMessages(messages) {
     const container = document.getElementById('messagesContainer');
-    document.getElementById('emptyState').style.display = 'none';
+    const emptyState = document.getElementById('emptyState');
+    if (!container) return;
+
     container.innerHTML = '';
 
+    if (!messages || messages.length === 0) {
+        if (emptyState) emptyState.style.display = 'flex';
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
     messages.forEach(msg => {
-        const row = document.createElement('div');
-        row.className = `message-row ${msg.sender}`;
-        
-        const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
-        let parsedText = formatMessageContent(msg.text);
+        try {
+            const row = document.createElement('div');
+            row.className = `message-row ${msg.sender}`;
+            
+            const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
+            let parsedText = formatMessageContent(msg.text);
 
-        let contentHtml = `
-            <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
-            <div class="message-content">
-                <div>${parsedText}</div>
-        `;
-
-        // If onboarding greeting message, attach interactive choice buttons!
-        if (msg.is_onboarding && !activeDocumentPath) {
-            contentHtml += `
-                <div class="onboarding-actions">
-                    <button class="btn btn-primary" onclick="openCreateDocModal()">
-                        <i class="fa-solid fa-file-circle-plus"></i> Start New Document
-                    </button>
-                    <button class="btn btn-secondary" onclick="openSelectDocModal()">
-                        <i class="fa-solid fa-folder-open"></i> Edit Existing Document
-                    </button>
-                    <button class="btn btn-secondary" onclick="openRepoModal()">
-                        <i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki
-                    </button>
-                </div>
+            let contentHtml = `
+                <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
+                <div class="message-content">
+                    <div>${parsedText}</div>
             `;
-        }
 
-        // If document update info attached
-        if (msg.doc_update_info) {
-            const doc = msg.doc_update_info;
-            contentHtml += `
-                <div class="doc-update-card">
-                    <i class="fa-solid fa-circle-check"></i> Updated file: <strong>${escapeHtml(doc.filename)}</strong>
-                    <br><small class="text-subtle">${doc.headings ? doc.headings.length : 0} section headings in document</small>
-                </div>
-            `;
-        }
+            // If onboarding greeting message, attach interactive choice buttons!
+            if (msg.is_onboarding && !activeDocumentPath) {
+                contentHtml += `
+                    <div class="onboarding-actions">
+                        <button class="btn btn-primary" onclick="openCreateDocModal()">
+                            <i class="fa-solid fa-file-circle-plus"></i> Start New Document
+                        </button>
+                        <button class="btn btn-secondary" onclick="openSelectDocModal()">
+                            <i class="fa-solid fa-folder-open"></i> Edit Existing Document
+                        </button>
+                        <button class="btn btn-secondary" onclick="openRepoModal()">
+                            <i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki
+                        </button>
+                    </div>
+                `;
+            }
 
-        contentHtml += `</div>`;
-        row.innerHTML = contentHtml;
-        container.appendChild(row);
+            // If document update info attached
+            if (msg.doc_update_info) {
+                const doc = msg.doc_update_info;
+                contentHtml += `
+                    <div class="doc-update-card">
+                        <i class="fa-solid fa-circle-check"></i> Updated file: <strong>${escapeHtml(doc.filename)}</strong>
+                        <br><small class="text-subtle">${doc.headings ? doc.headings.length : 0} section headings in document</small>
+                    </div>
+                `;
+            }
+
+            contentHtml += `</div>`;
+            row.innerHTML = contentHtml;
+            container.appendChild(row);
+        } catch (e) {
+            console.error('Error rendering individual message:', e, msg);
+        }
     });
 
     container.scrollTop = container.scrollHeight;
