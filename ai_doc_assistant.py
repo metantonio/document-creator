@@ -123,64 +123,79 @@ def extract_json_from_response(text: str) -> Any:
 
 def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     """
-    Failsafe parser that converts raw prompt input (chat logs + git diffs)
-    into structured Markdown sections with tables and diff code blocks.
+    Generic failsafe parser that dynamically converts ANY raw prompt input 
+    (chat transcripts, logs, code diffs, or instructions) into clean Markdown sections.
     """
     lines = user_input.splitlines()
     sections = []
     
-    chat_lines = []
+    chat_rows = []
     diff_lines = []
     general_lines = []
     
     in_diff = False
     for line in lines:
-        if line.startswith('diff --git') or line.startswith('--- a/') or line.startswith('+++ b/') or line.startswith('Original file line number'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+            
+        if stripped.startswith('diff --git') or stripped.startswith('--- a/') or stripped.startswith('+++ b/') or stripped.startswith('Original file line number'):
             in_diff = True
-        
+            
         if in_diff:
             diff_lines.append(line)
-        elif any(k in line for k in ['Contractor', 'Hi ', 'Done', 'rebooted', 'notebook', 'bucket', 'SQL']):
-            chat_lines.append(line)
         else:
-            general_lines.append(line)
-            
-    # 1. Chat Requests Summary Table
-    if chat_lines:
-        table_markdown = (
-            "| Requester | Service / Issue Description | Resource / Instance | Status | Resolution Notes |\n"
-            "| :--- | :--- | :--- | :--- | :--- |\n"
-            "| **Sharma Vemu** | Request VS Code VDI Update (1.106 ➔ 1.130) | VDI Environment | ⏳ Pending | Forwarded to VDI Team |\n"
-            "| **Thota Prathap** | Notebook Login Issue | `g-ppdam-us-pe2mvpbain-notebook-ppdnb06-vai` | ✅ Resolved | Machine checked & access restored |\n"
-            "| **Henrique / Vemu** | Storage Bucket Request (`gbapp`) | `ppdam` & `devam` | ✅ Resolved | Buckets created |\n"
-            "| **Henrique / Vemu** | Storage Bucket Request (`chapp`) | `ppdeu` & `deveu` | ✅ Resolved | Buckets created |\n"
-            "| **Sharma Vemu** | Cloud SQL IP Configuration | `g-devam-gb-pe3-sui-uc1-a-csql01` | ⏳ Pending | Pending Cloud SQL IP provisioning |\n"
-        )
+            # Match sender pattern (e.g. "User Name (Role)", "User Name:", "User Name")
+            chat_match = re.match(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35})(?:\s*\(.*?\))?\s*[:\-\—]?\s*(.*)$', stripped)
+            if chat_match and len(chat_match.group(1).split()) <= 4 and not stripped.startswith('http') and not stripped.startswith('#'):
+                sender = chat_match.group(1).strip()
+                message_text = chat_match.group(2).strip()
+                if message_text:
+                    chat_rows.append((sender, message_text))
+                else:
+                    chat_rows.append((sender, ""))
+            else:
+                if chat_rows and chat_rows[-1][1] == "":
+                    prev_sender, _ = chat_rows[-1]
+                    chat_rows[-1] = (prev_sender, stripped)
+                else:
+                    general_lines.append(stripped)
+
+    # 1. Generic Chat / Transcript Summary Table
+    if chat_rows:
+        table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
+        for sender, msg in chat_rows:
+            if msg:
+                clean_msg = msg.replace('|', '\\|')
+                table_rows.append(f"| **{sender}** | {clean_msg} |")
+                
+        if len(table_rows) > 2:
+            sections.append({
+                "title": "Communication & Conversation Log",
+                "level": 2,
+                "content": "\n".join(table_rows)
+            })
+
+    # 2. Generic Code Diff & Patch Section
+    if diff_lines:
+        diff_code_block = "```diff\n" + "\n".join(diff_lines[:200]) + "\n```"
         sections.append({
-            "title": "1. Service Requests & Team Resolution Log",
+            "title": "Code Modifications & Diff Patch",
             "level": 2,
-            "content": table_markdown
+            "content": diff_code_block
         })
 
-    # 2. Code Changes & Infrastructure Pull Request
-    if diff_lines:
-        diff_code_block = "```diff\n" + "\n".join(diff_lines[:150]) + "\n```"
-        summary_text = (
-            "The following Pull Request implements infrastructure updates across GCP modules:\n\n"
-            "- **`startup.sh` (Asset Mirror)**: Solves corporate VFW TLS truncation on large package downloads (JDK, Miniforge) via Private Google VIP (`gs://.../vm-assets`).\n"
-            "- **`chapp` GCS Buckets**: Provisions downstream Switzerland (`ch`) app consumption bucket `g-deveu-cp-pe3-chapp-ew3-gcs01` with CMEK encryption.\n"
-            "- **`gbapp` US Consumption Copy**: Adds US-resident copy `g-devam-cp-pe3-gbapp-uc1-gcs01` for `us-central1` workloads.\n\n"
-            + diff_code_block
-        )
+    # 3. General Content
+    if general_lines:
         sections.append({
-            "title": "2. Pull Request Infrastructure Changes & Patch Details",
+            "title": "Technical Notes & Input Details",
             "level": 2,
-            "content": summary_text
+            "content": "\n\n".join(general_lines)
         })
-        
+
     if not sections:
         sections.append({
-            "title": "Technical Documentation Overview",
+            "title": "Document Content",
             "level": 1,
             "content": user_input
         })
