@@ -230,8 +230,9 @@ def render_markdown_body_to_docx(doc: Document, content: str):
             i += 1
             continue
             
-        # 1. Fenced Code Blocks (```python ... ```)
+        # 1. Fenced Code Blocks (```python / ```diff / ```)
         if line.startswith('```'):
+            code_lang = line.replace('```', '').strip().lower()
             i += 1
             code_lines = []
             while i < len(lines) and not lines[i].startswith('```'):
@@ -239,22 +240,64 @@ def render_markdown_body_to_docx(doc: Document, content: str):
                 i += 1
             if i < len(lines) and lines[i].startswith('```'):
                 i += 1
+
+            # Detect Git Diff format
+            is_diff = (code_lang.startswith('diff')) or any(
+                cl.startswith('+') or cl.startswith('-') or cl.startswith('@@') or cl.startswith('diff --git')
+                for cl in code_lines
+            )
+
+            if is_diff:
+                for code_line in code_lines:
+                    p = doc.add_paragraph()
+                    p.paragraph_format.left_indent = Pt(12)
+                    p.paragraph_format.space_before = Pt(1)
+                    p.paragraph_format.space_after = Pt(1)
+                    
+                    run = p.add_run(code_line if code_line else ' ')
+                    run.font.name = 'Consolas'
+                    run.font.size = Pt(9.5)
+
+                    bg_color = "F8FAFC"
+                    text_rgb = RGBColor(51, 65, 85)
+
+                    if code_line.startswith('+') and not code_line.startswith('+++'):
+                        bg_color = "DCFCE7"  # Soft Light Green
+                        text_rgb = RGBColor(22, 101, 52)  # Dark Green #166534
+                    elif code_line.startswith('-') and not code_line.startswith('---'):
+                        bg_color = "FEE2E2"  # Soft Light Red
+                        text_rgb = RGBColor(153, 27, 27)  # Dark Red #991B1B
+                    elif code_line.startswith('@@') or code_line.startswith('diff --git') or code_line.startswith('index '):
+                        bg_color = "E0E7FF"  # Soft Indigo
+                        text_rgb = RGBColor(55, 48, 163)  # Dark Indigo #3730A3
+                        run.font.bold = True
+                    elif code_line.startswith('+++') or code_line.startswith('---'):
+                        bg_color = "F1F5F9"
+                        text_rgb = RGBColor(71, 85, 105)
+                        run.font.bold = True
+
+                    run.font.color.rgb = text_rgb
+                    try:
+                        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}"/>')
+                        p._p.get_or_add_pPr().append(shd)
+                    except Exception:
+                        pass
+            else:
+                code_text = "\n".join(code_lines)
+                p = doc.add_paragraph()
+                p.paragraph_format.left_indent = Pt(12)
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after = Pt(4)
+                run = p.add_run(code_text)
+                run.font.name = 'Consolas'
+                run.font.size = Pt(9.5)
+                run.font.color.rgb = RGBColor(30, 41, 59)
                 
-            code_text = "\n".join(code_lines)
-            p = doc.add_paragraph()
-            p.paragraph_format.left_indent = Pt(12)
-            p.paragraph_format.space_before = Pt(4)
-            p.paragraph_format.space_after = Pt(4)
-            run = p.add_run(code_text)
-            run.font.name = 'Consolas'
-            run.font.size = Pt(9.5)
-            run.font.color.rgb = RGBColor(30, 41, 59)
-            
-            try:
-                shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F1F5F9"/>')
-                p._p.get_or_add_pPr().append(shd)
-            except Exception:
-                pass
+                try:
+                    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F1F5F9"/>')
+                    p._p.get_or_add_pPr().append(shd)
+                except Exception:
+                    pass
             continue
 
         # 2. Markdown Tables (| Col1 | Col2 |)
