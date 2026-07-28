@@ -30,22 +30,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Auto-resize chat textarea on input & paste
     const chatInput = document.getElementById('chatInput');
-    const resizeTextarea = () => {
-        chatInput.style.height = 'auto';
-        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
-    };
-    
-    chatInput.addEventListener('input', resizeTextarea);
-    chatInput.addEventListener('paste', () => {
-        setTimeout(resizeTextarea, 10);
-    });
+    if (chatInput) {
+        const resizeTextarea = () => {
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+        };
+        
+        chatInput.addEventListener('input', resizeTextarea);
+        chatInput.addEventListener('paste', () => {
+            setTimeout(resizeTextarea, 10);
+        });
 
-    chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
 });
 
 // --- CONFIG & PROVIDER ---
@@ -69,17 +71,17 @@ function updateProviderUI() {
     const btnCloud = document.getElementById('btnProviderCloud');
     const infoText = document.getElementById('providerInfoText');
 
-    badge.innerText = provider.toUpperCase();
+    if (badge) badge.innerText = provider.toUpperCase();
     if (provider === 'local') {
-        btnLocal.classList.add('active');
-        btnCloud.classList.remove('active');
+        if (btnLocal) btnLocal.classList.add('active');
+        if (btnCloud) btnCloud.classList.remove('active');
         const lcfg = currentConfig.local_config || {};
-        infoText.innerText = `${lcfg.model || 'Local Model'} (${lcfg.base_url || 'localhost'})`;
+        if (infoText) infoText.innerText = `${lcfg.model || 'Local Model'} (${lcfg.base_url || 'localhost'})`;
     } else {
-        btnCloud.classList.add('active');
-        btnLocal.classList.remove('active');
+        if (btnCloud) btnCloud.classList.add('active');
+        if (btnLocal) btnLocal.classList.remove('active');
         const ccfg = currentConfig.cloud_config || {};
-        infoText.innerText = `${ccfg.model || 'Cloud Model'} (${ccfg.base_url || 'api.openai.com'})`;
+        if (infoText) infoText.innerText = `${ccfg.model || 'Cloud Model'} (${ccfg.base_url || 'api.openai.com'})`;
     }
 }
 
@@ -109,6 +111,7 @@ async function fetchChats() {
 
 function renderChatsList(chats) {
     const list = document.getElementById('chatsList');
+    if (!list) return;
     list.innerHTML = '';
 
     chats.forEach(chat => {
@@ -152,7 +155,8 @@ async function selectChat(chatId) {
         const res = await fetch(`/api/chats/${chatId}`);
         const chat = await res.json();
         
-        document.getElementById('currentChatTitle').innerText = chat.title || 'Conversation';
+        const titleEl = document.getElementById('currentChatTitle');
+        if (titleEl) titleEl.innerText = chat.title || 'Conversation';
         activeDocumentPath = chat.active_doc_path;
         
         updateActiveDocBadge();
@@ -191,12 +195,14 @@ function updateActiveDocBadge() {
     const badge = document.getElementById('activeDocBadge');
     const nameSpan = document.getElementById('activeDocName');
     
-    if (activeDocumentPath) {
-        const filename = activeDocumentPath.split(/[/\\]/).pop();
-        nameSpan.innerText = filename;
-        badge.style.display = 'flex';
-    } else {
-        badge.style.display = 'none';
+    if (badge && nameSpan) {
+        if (activeDocumentPath) {
+            const filename = activeDocumentPath.split(/[/\\]/).pop();
+            nameSpan.innerText = filename;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
     }
 }
 
@@ -387,47 +393,57 @@ async function loadDocumentContent(filepath) {
 function renderViewer() {
     if (!currentDocData) return;
 
-    document.getElementById('viewerMeta').style.display = 'flex';
-    document.getElementById('vFileName').innerText = currentDocData.filename;
-    document.getElementById('vFileFormat').innerText = currentDocData.format.toUpperCase();
-    document.getElementById('vFilePath').innerText = currentDocData.filepath;
-
+    const vMeta = document.getElementById('viewerMeta');
+    const vFileName = document.getElementById('vFileName');
+    const vFileFormat = document.getElementById('vFileFormat');
+    const vFilePath = document.getElementById('vFilePath');
     const contentDiv = document.getElementById('viewerContent');
-    
-    if (currentViewerTab === 'preview') {
-        if (typeof marked !== 'undefined') {
-            contentDiv.innerHTML = marked.parse(currentDocData.full_text);
-        } else {
-            contentDiv.innerHTML = `<pre>${escapeHtml(currentDocData.full_text)}</pre>`;
+
+    if (vMeta) vMeta.style.display = 'flex';
+    if (vFileName) vFileName.innerText = currentDocData.filename || '';
+    if (vFileFormat) vFileFormat.innerText = (currentDocData.format || '').toUpperCase();
+    if (vFilePath) vFilePath.innerText = currentDocData.filepath || '';
+
+    if (contentDiv) {
+        if (currentViewerTab === 'preview') {
+            if (typeof marked !== 'undefined' && currentDocData.full_text) {
+                contentDiv.innerHTML = marked.parse(currentDocData.full_text);
+            } else {
+                contentDiv.innerHTML = `<pre>${escapeHtml(currentDocData.full_text || '')}</pre>`;
+            }
+        } else { // Outline
+            let treeHtml = '<h4>Document Heading Tree</h4><ul style="list-style:none; padding-left:0; margin-top:10px;">';
+            if (currentDocData.headings && currentDocData.headings.length > 0) {
+                currentDocData.headings.forEach(h => {
+                    const indent = (h.level - 1) * 16;
+                    treeHtml += `<li style="padding-left:${indent}px; margin-bottom:8px;">
+                        <i class="fa-solid fa-heading" style="font-size:12px; color:var(--accent-primary);"></i>
+                        <strong>H${h.level}:</strong> ${escapeHtml(h.title)}
+                    </li>`;
+                });
+            } else {
+                treeHtml += '<li class="text-subtle">No headings detected.</li>';
+            }
+            treeHtml += '</ul>';
+            contentDiv.innerHTML = treeHtml;
         }
-    } else { // Outline
-        let treeHtml = '<h4>Document Heading Tree</h4><ul style="list-style:none; padding-left:0; margin-top:10px;">';
-        if (currentDocData.headings && currentDocData.headings.length > 0) {
-            currentDocData.headings.forEach(h => {
-                const indent = (h.level - 1) * 16;
-                treeHtml += `<li style="padding-left:${indent}px; margin-bottom:8px;">
-                    <i class="fa-solid fa-heading" style="font-size:12px; color:var(--accent-primary);"></i>
-                    <strong>H${h.level}:</strong> ${escapeHtml(h.title)}
-                </li>`;
-            });
-        } else {
-            treeHtml += '<li class="text-subtle">No headings detected.</li>';
-        }
-        treeHtml += '</ul>';
-        contentDiv.innerHTML = treeHtml;
     }
 }
 
 function clearViewer() {
     currentDocData = null;
-    document.getElementById('viewerMeta').style.display = 'none';
-    document.getElementById('viewerContent').innerHTML = `
-        <div class="empty-viewer">
-            <i class="fa-solid fa-file-contract"></i>
-            <p>No document loaded in viewer.</p>
-            <p class="text-subtle">Select an active document in chat or pick one from library.</p>
-        </div>
-    `;
+    const vMeta = document.getElementById('viewerMeta');
+    const vContent = document.getElementById('viewerContent');
+    if (vMeta) vMeta.style.display = 'none';
+    if (vContent) {
+        vContent.innerHTML = `
+            <div class="empty-viewer">
+                <i class="fa-solid fa-file-contract"></i>
+                <p>No document loaded in viewer.</p>
+                <p class="text-subtle">Select an active document in chat or pick one from library.</p>
+            </div>
+        `;
+    }
 }
 
 function toggleViewerPanel() {
@@ -435,19 +451,23 @@ function toggleViewerPanel() {
     const text = document.getElementById('toggleViewerText');
     isViewerOpen = !isViewerOpen;
     
-    if (isViewerOpen) {
-        panel.classList.remove('hidden');
-        text.innerText = 'Hide Document Viewer';
-    } else {
-        panel.classList.add('hidden');
-        text.innerText = 'Show Document Viewer';
+    if (panel) {
+        if (isViewerOpen) {
+            panel.classList.remove('hidden');
+            if (text) text.innerText = 'Hide Document Viewer';
+        } else {
+            panel.classList.add('hidden');
+            if (text) text.innerText = 'Show Document Viewer';
+        }
     }
 }
 
 function switchViewerTab(tab) {
     currentViewerTab = tab;
-    document.getElementById('tabDocPreview').classList.toggle('active', tab === 'preview');
-    document.getElementById('tabDocOutline').classList.toggle('active', tab === 'outline');
+    const tabPrev = document.getElementById('tabDocPreview');
+    const tabOut = document.getElementById('tabDocOutline');
+    if (tabPrev) tabPrev.classList.toggle('active', tab === 'preview');
+    if (tabOut) tabOut.classList.toggle('active', tab === 'outline');
     renderViewer();
 }
 
@@ -470,19 +490,21 @@ function changeActiveDocument() {
 }
 
 
-// --- MODALS ACTIONS ---
-
 function openModal(id) {
-    document.getElementById(id).classList.add('active');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
 }
 
 function openCreateDocModal() {
-    document.getElementById('newDocTitle').value = '';
-    document.getElementById('newDocContent').value = '';
+    const title = document.getElementById('newDocTitle');
+    const content = document.getElementById('newDocContent');
+    if (title) title.value = '';
+    if (content) content.value = '';
     openModal('createDocModal');
 }
 
@@ -606,17 +628,22 @@ function populateConfigModal() {
     const lcfg = currentConfig.local_config || {};
     const ccfg = currentConfig.cloud_config || {};
 
-    document.getElementById('cfgLocalBaseUrl').value = lcfg.base_url || 'http://localhost:11434/v1';
-    document.getElementById('cfgLocalModel').value = lcfg.model || 'llama3';
-    document.getElementById('cfgLocalApiKey').value = lcfg.api_key || 'ollama';
-    document.getElementById('cfgLocalTemp').value = lcfg.temperature !== undefined ? lcfg.temperature : 0.3;
-    document.getElementById('cfgLocalMaxTokens').value = lcfg.max_tokens !== undefined && lcfg.max_tokens !== null ? lcfg.max_tokens : 0;
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
 
-    document.getElementById('cfgCloudBaseUrl').value = ccfg.base_url || 'https://api.openai.com/v1';
-    document.getElementById('cfgCloudModel').value = ccfg.model || 'gpt-4o';
-    document.getElementById('cfgCloudApiKey').value = ccfg.api_key || '';
-    document.getElementById('cfgCloudTemp').value = ccfg.temperature !== undefined ? ccfg.temperature : 0.3;
-    document.getElementById('cfgCloudMaxTokens').value = ccfg.max_tokens !== undefined && ccfg.max_tokens !== null ? ccfg.max_tokens : 32768;
+    setVal('cfgLocalBaseUrl', lcfg.base_url || 'http://localhost:11434/v1');
+    setVal('cfgLocalModel', lcfg.model || 'llama3');
+    setVal('cfgLocalApiKey', lcfg.api_key || 'ollama');
+    setVal('cfgLocalTemp', lcfg.temperature !== undefined ? lcfg.temperature : 0.3);
+    setVal('cfgLocalMaxTokens', lcfg.max_tokens !== undefined && lcfg.max_tokens !== null ? lcfg.max_tokens : 0);
+
+    setVal('cfgCloudBaseUrl', ccfg.base_url || 'https://api.openai.com/v1');
+    setVal('cfgCloudModel', ccfg.model || 'gpt-4o');
+    setVal('cfgCloudApiKey', ccfg.api_key || '');
+    setVal('cfgCloudTemp', ccfg.temperature !== undefined ? ccfg.temperature : 0.3);
+    setVal('cfgCloudMaxTokens', ccfg.max_tokens !== undefined && ccfg.max_tokens !== null ? ccfg.max_tokens : 32768);
 
     renderDocumentPathsList(currentConfig.document_paths || []);
 }
@@ -703,27 +730,34 @@ async function saveConfiguration() {
 }
 
 async function openRepoModal() {
-    document.getElementById('repoSourceInput').value = '';
-    document.getElementById('repoNewTitle').value = '';
-    document.getElementById('repoLoadingState').style.display = 'none';
-    document.getElementById('btnSubmitRepo').disabled = false;
+    const src = document.getElementById('repoSourceInput');
+    const title = document.getElementById('repoNewTitle');
+    const loading = document.getElementById('repoLoadingState');
+    const btn = document.getElementById('btnSubmitRepo');
+
+    if (src) src.value = '';
+    if (title) title.value = '';
+    if (loading) loading.style.display = 'none';
+    if (btn) btn.disabled = false;
     
     // Populate existing docs select
     try {
         const res = await fetch('/api/documents');
         const data = await res.json();
         const select = document.getElementById('repoSelectExisting');
-        select.innerHTML = '';
-        
-        if (data.documents && data.documents.length > 0) {
-            data.documents.forEach(doc => {
-                const opt = document.createElement('option');
-                opt.value = doc.filepath;
-                opt.innerText = `${doc.filename} (${doc.format.toUpperCase()})`;
-                select.appendChild(opt);
-            });
-        } else {
-            select.innerHTML = '<option value="">No existing documents available</option>';
+        if (select) {
+            select.innerHTML = '';
+            
+            if (data.documents && data.documents.length > 0) {
+                data.documents.forEach(doc => {
+                    const opt = document.createElement('option');
+                    opt.value = doc.filepath;
+                    opt.innerText = `${doc.filename} (${doc.format.toUpperCase()})`;
+                    select.appendChild(opt);
+                });
+            } else {
+                select.innerHTML = '<option value="">No existing documents available</option>';
+            }
         }
     } catch (e) {
         console.error('Error fetching docs for repo modal:', e);
@@ -791,8 +825,10 @@ async function submitRepoAnalysis() {
         console.error('Error submitting repo analysis:', e);
         alert(`An error occurred: ${e.message}`);
     } finally {
-        document.getElementById('repoLoadingState').style.display = 'none';
-        document.getElementById('btnSubmitRepo').disabled = false;
+        const loading = document.getElementById('repoLoadingState');
+        const btn = document.getElementById('btnSubmitRepo');
+        if (loading) loading.style.display = 'none';
+        if (btn) btn.disabled = false;
     }
 }
 
