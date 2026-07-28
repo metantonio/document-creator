@@ -215,6 +215,9 @@ function renderMessages(messages) {
                     <button class="btn btn-secondary" onclick="openSelectDocModal()">
                         <i class="fa-solid fa-folder-open"></i> Edit Existing Document
                     </button>
+                    <button class="btn btn-secondary" onclick="openRepoModal()">
+                        <i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki
+                    </button>
                 </div>
             `;
         }
@@ -656,6 +659,100 @@ async function saveConfiguration() {
         await fetchDocuments();
     } catch (e) {
         console.error('Error saving config:', e);
+    }
+}
+
+async function openRepoModal() {
+    document.getElementById('repoSourceInput').value = '';
+    document.getElementById('repoNewTitle').value = '';
+    document.getElementById('repoLoadingState').style.display = 'none';
+    document.getElementById('btnSubmitRepo').disabled = false;
+    
+    // Populate existing docs select
+    try {
+        const res = await fetch('/api/documents');
+        const data = await res.json();
+        const select = document.getElementById('repoSelectExisting');
+        select.innerHTML = '';
+        
+        if (data.documents && data.documents.length > 0) {
+            data.documents.forEach(doc => {
+                const opt = document.createElement('option');
+                opt.value = doc.filepath;
+                opt.innerText = `${doc.filename} (${doc.format.toUpperCase()})`;
+                select.appendChild(opt);
+            });
+        } else {
+            select.innerHTML = '<option value="">No existing documents available</option>';
+        }
+    } catch (e) {
+        console.error('Error fetching docs for repo modal:', e);
+    }
+    
+    toggleRepoDocFields();
+    openModal('repoModal');
+}
+
+function toggleRepoDocFields() {
+    const opt = document.querySelector('input[name="repoDocOpt"]:checked').value;
+    document.getElementById('repoNewDocFields').style.display = opt === 'new' ? 'block' : 'none';
+    document.getElementById('repoExistingDocFields').style.display = opt === 'existing' ? 'block' : 'none';
+}
+
+async function submitRepoAnalysis() {
+    const repoSource = document.getElementById('repoSourceInput').value.trim();
+    if (!repoSource) {
+        alert('Please enter a local repository folder path or GitHub URL.');
+        return;
+    }
+
+    const docOpt = document.querySelector('input[name="repoDocOpt"]:checked').value;
+    const newTitle = document.getElementById('repoNewTitle').value.trim();
+    const newFormat = document.getElementById('repoNewFormat').value;
+    const existingFilepath = document.getElementById('repoSelectExisting').value;
+
+    if (docOpt === 'existing' && !existingFilepath) {
+        alert('Please select an existing target document.');
+        return;
+    }
+
+    // UI Loading state
+    document.getElementById('repoLoadingState').style.display = 'block';
+    document.getElementById('btnSubmitRepo').disabled = true;
+
+    try {
+        const res = await fetch('/api/repository/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                repo_source: repoSource,
+                chat_id: currentChatId,
+                doc_option: docOpt,
+                target_filepath: existingFilepath,
+                format: newFormat,
+                new_title: newTitle
+            })
+        });
+
+        const data = await res.json();
+        
+        if (res.ok) {
+            closeModal('repoModal');
+            await fetchDocuments();
+            if (currentChatId) {
+                await selectChat(currentChatId);
+            } else if (data.document) {
+                await loadDocumentContent(data.document.filepath);
+            }
+        } else {
+            alert(`Analysis Error: ${data.detail || 'Failed to analyze repository'}`);
+        }
+    } catch (e) {
+        console.error('Error submitting repo analysis:', e);
+        alert(`An error occurred: ${e.message}`);
+    } finally {
+        document.getElementById('repoLoadingState').style.display = 'none';
+        document.getElementById('btnSubmitRepo').disabled = false;
     }
 }
 

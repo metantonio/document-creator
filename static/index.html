@@ -47,9 +47,12 @@
                 </div>
             </div>
 
-            <!-- New Chat Button -->
+            <!-- New Chat & Analyze Repo Buttons -->
             <button class="btn btn-primary btn-block" onclick="createNewChat()">
                 <i class="fa-solid fa-plus"></i> New Chat Session
+            </button>
+            <button class="btn btn-secondary btn-block" onclick="openRepoModal()">
+                <i class="fa-solid fa-bolt"></i> Analyze Repository Wiki
             </button>
 
             <!-- Conversations List -->
@@ -232,6 +235,80 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeModal('uploadModal')">Cancel</button>
                 <button class="btn btn-primary" onclick="submitUploadFile()">Upload File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ANALYZE REPOSITORY -->
+    <div class="modal-overlay" id="repoModal">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki (OpenWiki Style)</h3>
+                <button class="btn-icon" onclick="closeModal('repoModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="cfg-desc">Enter a local directory path or GitHub repository URL. AI will analyze the codebase structure, dependencies, and modules to generate technical documentation.</p>
+
+                <div class="form-group">
+                    <label>Repository Source (Local Path or GitHub URL)</label>
+                    <input type="text" id="repoSourceInput" class="form-control" placeholder="e.g. C:\Repositorios\my-project  OR  https://github.com/metantonio/document-creator">
+                </div>
+
+                <div class="form-group">
+                    <label>Target Documentation Option</label>
+                    <div class="format-options" style="flex-direction: column; gap: 8px;">
+                        <label class="format-radio">
+                            <input type="radio" name="repoDocOpt" value="new" checked onchange="toggleRepoDocFields()">
+                            <span class="radio-card" style="justify-content: flex-start;"><i class="fa-solid fa-file-circle-plus"></i> Create New Document for Repo Wiki</span>
+                        </label>
+                        <label class="format-radio">
+                            <input type="radio" name="repoDocOpt" value="current" onchange="toggleRepoDocFields()">
+                            <span class="radio-card" style="justify-content: flex-start;"><i class="fa-solid fa-file-lines"></i> Merge into Currently Active Chat Document</span>
+                        </label>
+                        <label class="format-radio">
+                            <input type="radio" name="repoDocOpt" value="existing" onchange="toggleRepoDocFields()">
+                            <span class="radio-card" style="justify-content: flex-start;"><i class="fa-solid fa-folder-open"></i> Merge into Existing File from Library</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Fields for New Document -->
+                <div id="repoNewDocFields" class="form-group">
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label>Document Title</label>
+                            <input type="text" id="repoNewTitle" class="form-control" placeholder="e.g. Repository Architecture Wiki">
+                        </div>
+                        <div class="form-group col">
+                            <label>Format</label>
+                            <select id="repoNewFormat" class="form-control">
+                                <option value="md" selected>Markdown (.md)</option>
+                                <option value="docx">Word (.docx)</option>
+                                <option value="txt">Plain Text (.txt)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Field for Existing Document -->
+                <div id="repoExistingDocFields" class="form-group" style="display: none;">
+                    <label>Select Target Document</label>
+                    <select id="repoSelectExisting" class="form-control">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <div id="repoLoadingState" style="display: none; text-align: center; padding: 16px;">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 28px; color: var(--accent-primary);"></i>
+                    <p style="margin-top: 8px; font-weight: 500;">Scanning repository codebase & generating technical wiki sections...</p>
+                    <small class="text-subtle">This may take 15-30 seconds depending on the model speed.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('repoModal')">Cancel</button>
+                <button class="btn btn-primary" id="btnSubmitRepo" onclick="submitRepoAnalysis()">
+                    <i class="fa-solid fa-bolt"></i> Generate Repo Documentation
+                </button>
             </div>
         </div>
     </div>

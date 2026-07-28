@@ -62,6 +62,12 @@ Open your web browser and navigate to:
 
 ## ✨ Key Features
 
+- **⚡ Repository Documentation Wiki Generator (OpenWiki / DeepWiki Style)**:
+  - Input any local folder path (e.g. `C:\Repositorios\my-project`) or public GitHub repository URL (`https://github.com/owner/repo`).
+  - Automatically parses directory trees, configuration files (`README`, `package.json`, `requirements.txt`, etc.), and main source modules.
+  - Generates structured technical documentation (Architecture, Component Map, Tech Stack, Dependencies, API Breakdown, Setup Guide).
+  - Seamlessly incorporates the generated wiki into a **new document** or merges it into an **existing document** (`.docx`, `.md`, `.txt`) chosen by the user.
+
 - **Dual LLM Connectivity (Local & Cloud)**:
   - **Local Models**: Preconfigured support for **llama.cpp** (`http://localhost:8080/v1`), **Ollama** (`http://localhost:11434/v1`), and **LM Studio** (`http://localhost:1234/v1`).
   - **Cloud Models**: Supports **OpenAI** (`gpt-4o`), **OpenRouter**, **Groq**, etc.

@@ -10,7 +10,7 @@ import config
 from config import load_config, save_config
 import doc_service
 import chat_manager
-from ai_doc_assistant import process_document_update, ONBOARDING_GREETING
+from ai_doc_assistant import process_document_update, generate_repo_documentation, ONBOARDING_GREETING
 
 app = FastAPI(title="Technical Documentation Creator")
 
@@ -37,6 +37,16 @@ class CreateDocumentRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     text: str
     provider: Optional[str] = None # Optional override ('local' or 'cloud')
+
+class AnalyzeRepoRequest(BaseModel):
+    repo_source: str # Local folder path or GitHub URL
+    chat_id: Optional[str] = None
+    doc_option: str = "new" # 'current', 'new', 'existing'
+    target_filepath: Optional[str] = None
+    format: Optional[str] = "md" # 'md', 'docx', 'txt'
+    new_title: Optional[str] = None
+    provider: Optional[str] = None
+
 
 # --- CONFIG ENDPOINTS ---
 
@@ -245,6 +255,70 @@ def send_message(chat_id: str, req: SendMessageRequest):
         )
 
     return {"chat": chat_manager.get_chat(chat_id)}
+
+@app.post("/api/repository/analyze")
+def analyze_repository(req: AnalyzeRepoRequest):
+    """Analyze a local codebase or GitHub repository URL and merge technical documentation into chosen document."""
+    repo_src = req.repo_source.strip()
+    if not repo_src:
+        raise HTTPException(status_code=400, detail="Repository source (folder path or GitHub URL) cannot be empty.")
+
+    cfg = load_config()
+    paths = cfg.get("document_paths", [config.DEFAULT_DOCS_DIR])
+    primary_folder = paths[0]
+
+    target_path = None
+
+    # Determine target document
+    if req.doc_option == "current" and req.chat_id:
+        chat = chat_manager.get_chat(req.chat_id)
+        if chat and chat.get("active_doc_path") and os.path.exists(chat.get("active_doc_path")):
+            target_path = chat.get("active_doc_path")
+
+    if not target_path and req.doc_option == "existing" and req.target_filepath:
+        if os.path.exists(req.target_filepath):
+            target_path = req.target_filepath
+
+    if not target_path: # Default create new document
+        doc_format = (req.format or "md").lower()
+        repo_name = repo_src.split("/")[-1].replace(".git", "").strip() or "Repo_Documentation"
+        clean_title = req.new_title or f"Wiki - {repo_name}"
+        filename = f"{clean_title}.{doc_format}"
+        target_path = os.path.join(primary_folder, filename)
+        doc_service.create_document(target_path, doc_format, clean_title, f"Technical Documentation Wiki for {repo_name}")
+
+    try:
+        # Generate repo documentation and merge into target document
+        updated_doc, explanation = generate_repo_documentation(
+            repo_input=repo_src,
+            target_filepath=target_path,
+            provider=req.provider
+        )
+
+        if req.chat_id:
+            chat_manager.update_chat_active_document(req.chat_id, target_path)
+            chat_manager.add_chat_message(
+                req.chat_id,
+                "user",
+                f"⚡ Analyze repository: **{repo_src}**"
+            )
+            chat_manager.add_chat_message(
+                req.chat_id,
+                "assistant",
+                f"✅ **Repository Documentation Generated!**\n\n{explanation}",
+                doc_update_info=updated_doc
+            )
+
+        return {"status": "success", "document": updated_doc, "explanation": explanation}
+    except Exception as e:
+        if req.chat_id:
+            chat_manager.add_chat_message(
+                req.chat_id,
+                "assistant",
+                f"❌ Error analyzing repository: {str(e)}"
+            )
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 # Mount static directory for frontend
 static_dir = os.path.join(os.path.dirname(__file__), "static")
