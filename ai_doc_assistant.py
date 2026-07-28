@@ -43,7 +43,10 @@ Instructions & Strict Rules:
    - NEVER output conversational intro filler (such as "Here is the guide...", "Sure, here is...").
    - Output ONLY clean, professional technical document content.
 
-5. Provide your decision strictly in JSON format as follows:
+5. **URL & EXTERNAL REFERENCE RETENTION**:
+   - Whenever a URL (such as a GitHub Pull Request link, Jira ticket, or documentation link) is present in the input along with its content or diffs, ALWAYS preserve the clickable Markdown link `[Link Title](url)` in the section text accompanied by a clear technical explanation of what the URL and its contents represent.
+
+6. Provide your decision strictly in JSON format as follows:
 
 ```json
 {{
@@ -202,7 +205,8 @@ def separate_instruction_and_payload(raw_input: str) -> Tuple[str, str]:
             continue
             
         is_meta = any(re.search(pat, s, re.IGNORECASE) for pat in instruction_patterns)
-        if is_meta:
+        has_url = "http://" in s or "https://" in s
+        if is_meta and not has_url:
             instructions.append(s)
         else:
             payloads.append(line)
