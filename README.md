@@ -25,13 +25,22 @@ cd document-creator
 
 **On Windows (PowerShell / Command Prompt):**
 ```powershell
+# 1. Create virtual environment
 python -m venv venv
-.\venv\Scripts\activate
+
+# 2. Activate virtual environment (PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# Note: If PowerShell blocks script execution (ExecutionPolicy error), run this first:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 ```
 
 **On macOS / Linux:**
 ```bash
+# 1. Create virtual environment
 python -m venv venv
+
+# 2. Activate virtual environment (bash/zsh)
 source venv/bin/activate
 ```
 
