@@ -125,11 +125,12 @@ def extract_json_from_response(text: str) -> Any:
 def process_document_update(
     filepath: str,
     user_input: str,
+    chat_history: Optional[List[Dict[str, Any]]] = None,
     provider: str = None
 ) -> Tuple[Dict[str, Any], str]:
     """
     Analyzes document headings, uses AI to decide merge vs new section, 
-    applies the update to disk, and returns (updated_doc_dict, explanation).
+    incorporates chat history context, applies the update to disk, and returns (updated_doc_dict, explanation).
     """
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
@@ -147,11 +148,22 @@ def process_document_update(
         user_input=user_input
     )
     
+    messages = [
+        {"role": "system", "content": "You are a professional documentation AI assistant."}
+    ]
+
+    # Include recent conversation history turns for context memory (up to 8 messages)
+    if chat_history:
+        for m in chat_history[-8:]:
+            role = "user" if m.get("sender") == "user" else "assistant"
+            txt = m.get("text", "").strip()
+            if txt and not m.get("is_onboarding"):
+                messages.append({"role": role, "content": txt})
+
+    messages.append({"role": "user", "content": prompt})
+
     llm_output = generate_chat_response(
-        messages=[
-            {"role": "system", "content": "You are a professional documentation AI assistant."},
-            {"role": "user", "content": prompt}
-        ],
+        messages=messages,
         provider=provider
     )
     

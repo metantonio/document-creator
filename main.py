@@ -232,11 +232,12 @@ def send_message(chat_id: str, req: SendMessageRequest):
         chat_manager.add_chat_message(chat_id, "assistant", ai_reply)
         return {"chat": chat_manager.get_chat(chat_id)}
 
-    # 3. Process document update with AI
+    # 3. Process document update with AI (passing chat history for conversational memory)
     try:
         updated_doc, explanation = process_document_update(
             filepath=active_doc_path,
             user_input=user_text,
+            chat_history=chat.get("messages", []),
             provider=req.provider
         )
         
