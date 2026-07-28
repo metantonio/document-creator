@@ -139,6 +139,51 @@ def clean_input_text(text: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+def separate_instruction_and_payload(raw_input: str) -> Tuple[str, str]:
+    """
+    Separates user meta-instructions (e.g., "I want to create a guide...", "explícalos...")
+    from technical data payload (chat transcripts, code diffs, logs).
+    Returns (instruction_text, payload_text).
+    """
+    raw_input = clean_input_text(raw_input)
+    lines = raw_input.splitlines()
+    
+    instruction_patterns = [
+        r'^\s*i\s+want\s+to\s+create',
+        r'^\s*create\s+a\s+guide',
+        r'^\s*create\s+a\s+doc',
+        r'^\s*expl[ií]calos',
+        r'^\s*estos\s+fueron\s+los\s+cambios',
+        r'^\s*en\s+el\s+pull\s+request',
+        r'^\s*resumen\s+de',
+        r'^\s*documentar',
+        r'^\s*actualizar\s+el\s+documento',
+        r'^\s*\d+\s*/\s*\d+\s+viewed',
+        r'^\s*\d+\s+of\s+\d+\s+files\s+viewed',
+        r'^\s*filter\s+files',
+        r'^\s*file\s+tree'
+    ]
+    
+    instructions = []
+    payloads = []
+    
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+            
+        is_meta = any(re.search(pat, s, re.IGNORECASE) for pat in instruction_patterns)
+        if is_meta:
+            instructions.append(s)
+        else:
+            payloads.append(line)
+            
+    instruction_text = "\n".join(instructions) if instructions else "Structure and document the technical information cleanly into markdown sections."
+    payload_text = "\n".join(payloads)
+    
+    return instruction_text, payload_text
+
+
 def extract_json_from_response(text: str) -> Any:
     """Helper to parse JSON block from LLM output."""
     pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
@@ -160,8 +205,8 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     Generic failsafe parser that dynamically converts ANY raw prompt input 
     (chat transcripts, logs, code diffs, or instructions) into clean Markdown sections.
     """
-    user_input = clean_input_text(user_input)
-    lines = user_input.splitlines()
+    instruction, payload = separate_instruction_and_payload(user_input)
+    lines = payload.splitlines()
     sections = []
     
     chat_rows = []
@@ -204,8 +249,7 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                     prev_sender, _ = chat_rows[-1]
                     chat_rows[-1] = (prev_sender, stripped)
                 else:
-                    if not stripped.startswith("I want to create a guide") and not stripped.startswith("en el pull request"):
-                        general_lines.append(stripped)
+                    general_lines.append(stripped)
 
     # 1. Chat Summary Table
     if chat_rows:
@@ -243,7 +287,7 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
         sections.append({
             "title": "Technical Documentation Overview",
             "level": 1,
-            "content": user_input
+            "content": payload if payload else user_input
         })
         
     return sections
@@ -259,12 +303,17 @@ def process_document_update(
     Analyzes document headings, uses AI to decide merge vs new section, 
     incorporates chat history context, applies the update to disk, and returns (updated_doc_dict, explanation).
     """
-    user_input = clean_input_text(user_input)
+    instruction, payload = separate_instruction_and_payload(user_input)
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
     
-    # Truncate giant raw inputs for LLM prompt to prevent context overflow (max 3500 chars)
-    user_input_for_prompt = user_input if len(user_input) <= 3500 else (user_input[:2000] + "\n\n...[input truncated for context size]...\n\n" + user_input[-1500:])
+    # Format payload for LLM prompt safely bounded
+    payload_for_prompt = payload if len(payload) <= 3000 else (payload[:1800] + "\n\n...[payload truncated]...\n\n" + payload[-1200:])
+    
+    llm_input_json = {
+        "user_goal_instruction": instruction,
+        "technical_data_payload": payload_for_prompt
+    }
 
     structure_summary = []
     for s in sections:
@@ -276,7 +325,7 @@ def process_document_update(
         
     prompt = SYSTEM_DOCUMENT_ANALYZER_PROMPT.format(
         document_structure_json=json.dumps(structure_summary, indent=2),
-        user_input=user_input_for_prompt
+        user_input=json.dumps(llm_input_json, indent=2)
     )
     
     messages = [
