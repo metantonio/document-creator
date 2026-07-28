@@ -226,15 +226,40 @@ def render_inline_markdown(paragraph, text: str):
             paragraph.add_run(token)
 
 
-def render_markdown_body_to_docx(doc: Document, content: str):
-    """
-    Renders markdown section body into native Word elements:
-    - Tables -> Native docx tables with grid borders, headers, and alternating fills
-    - Code Blocks -> Native code blocks with Consolas font and background shading
-    - Bullet / Numbered Lists -> List Bullet / List Number styles
-    - Paragraphs -> Formatted runs with bold/italic/links
-    """
-    lines = content.splitlines()
+def escape_code_comments(text: str) -> str:
+    """Replaces leading '#' in code comment lines with a temporary safe token to prevent markdown heading parsing."""
+    lines = text.splitlines()
+    escaped_lines = []
+    in_code_block = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_block = not in_code_block
+            escaped_lines.append(line)
+            continue
+            
+        if in_code_block and line.startswith('#'):
+            escaped_lines.append(line.replace('#', '__HASH_ESC__', 1))
+        elif not in_code_block and re.match(r'^\s*#(?:[\=\-\#\s]{2,}|[\-\_\.a-zA-Z0-9\/]+:|\s*\(.*?\))', line):
+            escaped_lines.append(line.replace('#', '__HASH_ESC__', 1))
+        else:
+            escaped_lines.append(line)
+            
+    return "\n".join(escaped_lines)
+
+
+def unescape_code_comments(text: str) -> str:
+    """Restores '__HASH_ESC__' back to '#'."""
+    if not text:
+        return ""
+    return text.replace('__HASH_ESC__', '#')
+
+
+def render_markdown_body_to_docx(doc: Document, body_markdown: str):
+    """Parses markdown lines and appends formatted paragraphs/tables into an existing docx Document."""
+    body_markdown = escape_code_comments(body_markdown)
+    lines = body_markdown.splitlines()
     i = 0
     while i < len(lines):
         line = lines[i].rstrip()
@@ -267,7 +292,8 @@ def render_markdown_body_to_docx(doc: Document, content: str):
                     p.paragraph_format.space_before = Pt(1)
                     p.paragraph_format.space_after = Pt(1)
                     
-                    run = p.add_run(code_line if code_line else ' ')
+                    clean_code_line = unescape_code_comments(code_line)
+                    run = p.add_run(clean_code_line if clean_code_line else ' ')
                     run.font.name = 'Consolas'
                     run.font.size = Pt(9.5)
 

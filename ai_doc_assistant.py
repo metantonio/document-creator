@@ -26,7 +26,7 @@ Current Document Outline & Sections:
 User Technical Input:
 "{user_input}"
 
-Instructions:
+Instructions & Strict Rules:
 1. **DEEP ARCHITECTURAL ANALYSIS & EXPLANATIONS**:
    - Do NOT just copy raw code or chat lines verbatim.
    - For any code changes, diffs, or infrastructure updates: Explain WHY the change was made, WHAT problem it solves, and HOW the technical mechanics work (e.g. proxy TLS decryption limits, GCS mirror fallbacks, cross-region latency, IAM grants).
@@ -38,8 +38,10 @@ Instructions:
 3. **COLOR-CODED GIT DIFF CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
 
-4. **NO UI METADATA OR SYSTEM ARTIFACTS**:
-   - Never output UI status badges, "Document Updated!" lines, or assistant UI metadata cards.
+4. **CRITICAL PROHIBITION (NEVER ECHO PROMPT INSTRUCTIONS)**:
+   - NEVER output prompt instructions (such as "I want to create a guide...", "en el pull request que está...", "explícalos...") inside `updated_section_content`.
+   - NEVER output conversational intro filler (such as "Here is the guide...", "Sure, here is...").
+   - Output ONLY clean, professional technical document content.
 
 5. Provide your decision strictly in JSON format as follows:
 
@@ -55,6 +57,33 @@ Instructions:
 ```
 Only return valid JSON inside a ```json ``` block.
 """
+
+
+def clean_meta_instructions_from_content(content: str) -> str:
+    """Strips any accidental prompt instructions or LLM intro filler from generated content."""
+    if not content:
+        return ""
+    lines = content.splitlines()
+    cleaned = []
+    
+    meta_patterns = [
+        r'^\s*i\s+want\s+to\s+create',
+        r'^\s*here\s+is\s+the\s+guide',
+        r'^\s*here\s+is\s+the\s+document',
+        r'^\s*sure,?\s+here',
+        r'^\s*en\s+el\s+pull\s+request\s+que\s+est[aá]',
+        r'^\s*estos\s+fueron\s+los\s+cambios',
+        r'^\s*expl[ií]calos',
+        r'^\s*prompt\s*:'
+    ]
+    
+    for line in lines:
+        s = line.strip()
+        if any(re.search(pat, s, re.IGNORECASE) for pat in meta_patterns):
+            continue
+        cleaned.append(line)
+        
+    return "\n".join(cleaned).strip()
 
 
 SYSTEM_REPO_WIKI_PROMPT = """You are a Principal Software Architect and Technical Writer.
@@ -251,6 +280,8 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                 else:
                     general_lines.append(stripped)
 
+    section_counter = 1
+
     # 1. Chat Summary Table
     if chat_rows:
         table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
@@ -261,27 +292,30 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                 
         if len(table_rows) > 2:
             sections.append({
-                "title": "1. Communication & Team Request Log",
+                "title": f"{section_counter}. Communication & Team Request Log",
                 "level": 2,
                 "content": "\n".join(table_rows)
             })
+            section_counter += 1
 
     # 2. Code Diff Patch Section
     if diff_lines:
         diff_code_block = "```diff\n" + "\n".join(diff_lines[:250]) + "\n```"
         sections.append({
-            "title": "2. Infrastructure Modifications & Diff Patch",
+            "title": f"{section_counter}. Infrastructure Modifications & Diff Patch",
             "level": 2,
             "content": diff_code_block
         })
+        section_counter += 1
 
     # 3. Technical Notes & Details
     if general_lines:
         sections.append({
-            "title": "3. Technical Notes & Details",
+            "title": f"{section_counter}. Technical Notes & Overview",
             "level": 2,
             "content": "\n\n".join(general_lines)
         })
+        section_counter += 1
 
     if not sections:
         sections.append({
@@ -367,7 +401,8 @@ def process_document_update(
     target_heading = analysis.get("target_heading", "")
     new_heading_title = analysis.get("new_heading_title")
     heading_level = int(analysis.get("heading_level", 2))
-    updated_content = analysis.get("updated_section_content", user_input)
+    raw_updated_content = analysis.get("updated_section_content", user_input)
+    updated_content = clean_meta_instructions_from_content(raw_updated_content)
     explanation = analysis.get("explanation", "Document has been updated successfully.")
 
     updated_sections = []
