@@ -214,19 +214,65 @@ def separate_instruction_and_payload(raw_input: str) -> Tuple[str, str]:
 
 
 def extract_json_from_response(text: str) -> Any:
-    """Helper to parse JSON block from LLM output."""
+    """
+    Robust JSON parser that extracts JSON blocks and handles unescaped inner double quotes
+    (common in Terraform/Bash code snippets like "chapp" = { application = "pe3" }).
+    """
+    if not text:
+        return None
+
     pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
     match = re.search(pattern, text)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except Exception:
-            pass
+    raw_str = match.group(1).strip() if match else text.strip()
+
+    # Attempt 1: Standard json.loads
     try:
-        return json.loads(text.strip())
+        return json.loads(raw_str)
+    except Exception:
+        pass
+
+    # Attempt 2: Smart repair of unescaped quotes inside updated_section_content
+    try:
+        def fix_content_field(m):
+            prefix = m.group(1)
+            inner = m.group(2)
+            suffix = m.group(3)
+            inner_fixed = inner.replace('\\"', '___ESCAPED_QUOTE___')
+            inner_fixed = inner_fixed.replace('"', '\\"')
+            inner_fixed = inner_fixed.replace('___ESCAPED_QUOTE___', '\\"')
+            return f'{prefix}"{inner_fixed}"{suffix}'
+
+        repaired_str = re.sub(
+            r'("updated_section_content"\s*:\s*)"([\s\S]*?)"(\s*,\s*"explanation")',
+            fix_content_field,
+            raw_str
+        )
+        return json.loads(repaired_str)
+    except Exception:
+        pass
+
+    # Attempt 3: Relaxed regex extraction of individual JSON fields
+    try:
+        action_m = re.search(r'"action"\s*:\s*"([^"]+)"', raw_str)
+        target_m = re.search(r'"target_heading"\s*:\s*"([^"]*)"', raw_str)
+        title_m = re.search(r'"new_heading_title"\s*:\s*"([^"]*)"', raw_str)
+        level_m = re.search(r'"heading_level"\s*:\s*(\d+)', raw_str)
+        content_m = re.search(r'"updated_section_content"\s*:\s*"([\s\S]*?)"\s*,\s*"explanation"', raw_str)
+        exp_m = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw_str)
+
+        if content_m or action_m:
+            return {
+                "action": action_m.group(1) if action_m else "add_new",
+                "target_heading": target_m.group(1) if target_m else "",
+                "new_heading_title": title_m.group(1) if title_m else "Technical Documentation",
+                "heading_level": int(level_m.group(1)) if level_m else 2,
+                "updated_section_content": content_m.group(1) if content_m else raw_str,
+                "explanation": exp_m.group(1) if exp_m else "Updated document."
+            }
     except Exception as e:
         print(f"Failed to parse LLM JSON response: {e}")
-        return None
+
+    return None
 
 
 def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
