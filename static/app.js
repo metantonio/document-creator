@@ -301,13 +301,28 @@ async function sendMessage() {
         });
         const data = await res.json();
         
-        // Refresh full chat history
-        selectChat(currentChatId);
+        // Remove thinking indicator
+        const thinkingEl = document.getElementById('thinkingRow');
+        if (thinkingEl) thinkingEl.remove();
+
+        if (res.ok && data && data.chat) {
+            activeDocumentPath = data.chat.active_doc_path;
+            updateActiveDocBadge();
+            renderMessages(data.chat.messages || []);
+            
+            if (activeDocumentPath) {
+                await loadDocumentContent(activeDocumentPath);
+            }
+            fetchChats();
+        } else {
+            console.error('Error in send_message endpoint:', data);
+            alert(`Error: ${data.detail || 'Could not process AI response.'}`);
+        }
     } catch (e) {
         console.error('Error sending message:', e);
-        if (document.getElementById('thinkingRow')) {
-            document.getElementById('thinkingRow').remove();
-        }
+        const thinkingEl = document.getElementById('thinkingRow');
+        if (thinkingEl) thinkingEl.remove();
+        alert(`Communication Error: ${e.message}`);
     }
 }
 
