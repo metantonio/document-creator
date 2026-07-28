@@ -251,22 +251,35 @@ def extract_json_from_response(text: str) -> Any:
     except Exception:
         pass
 
-    # Attempt 3: Relaxed regex extraction of individual JSON fields
+    # Attempt 3: Extract inner section content safely (never return raw JSON string)
     try:
-        action_m = re.search(r'"action"\s*:\s*"([^"]+)"', raw_str)
-        target_m = re.search(r'"target_heading"\s*:\s*"([^"]*)"', raw_str)
-        title_m = re.search(r'"new_heading_title"\s*:\s*"([^"]*)"', raw_str)
-        level_m = re.search(r'"heading_level"\s*:\s*(\d+)', raw_str)
-        content_m = re.search(r'"updated_section_content"\s*:\s*"([\s\S]*?)"\s*,\s*"explanation"', raw_str)
-        exp_m = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw_str)
+        content_m = re.search(r'"updated_section_content"\s*:\s*"(.*)', raw_str, re.DOTALL)
+        if content_m:
+            tail = content_m.group(1)
+            exp_idx = tail.rfind('"explanation"')
+            if exp_idx != -1:
+                tail = tail[:exp_idx].rstrip()
+                if tail.endswith(','):
+                    tail = tail[:-1].rstrip()
+                if tail.endswith('"'):
+                    tail = tail[:-1]
+            else:
+                tail = re.sub(r'["\s\}]+$', '', tail)
+                
+            clean_content = tail.replace('\\"', '"').replace('\\n', '\n').strip()
+            
+            action_m = re.search(r'"action"\s*:\s*"([^"]+)"', raw_str)
+            target_m = re.search(r'"target_heading"\s*:\s*"([^"]*)"', raw_str)
+            title_m = re.search(r'"new_heading_title"\s*:\s*"([^"]*)"', raw_str)
+            level_m = re.search(r'"heading_level"\s*:\s*(\d+)', raw_str)
+            exp_m = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw_str)
 
-        if content_m or action_m:
             return {
                 "action": action_m.group(1) if action_m else "add_new",
                 "target_heading": target_m.group(1) if target_m else "",
-                "new_heading_title": title_m.group(1) if title_m else "Technical Documentation",
+                "new_heading_title": title_m.group(1) if title_m else None,
                 "heading_level": int(level_m.group(1)) if level_m else 2,
-                "updated_section_content": content_m.group(1) if content_m else raw_str,
+                "updated_section_content": clean_content,
                 "explanation": exp_m.group(1) if exp_m else "Updated document."
             }
     except Exception as e:
