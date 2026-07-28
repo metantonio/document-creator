@@ -174,15 +174,25 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
         if not stripped:
             continue
             
-        if stripped.startswith('diff --git') or stripped.startswith('--- a/') or stripped.startswith('+++ b/') or stripped.startswith('Original file line number'):
+        # Omit web diff UI noise headers
+        if (
+            stripped.startswith("Filter files") or 
+            stripped.startswith("File tree") or 
+            stripped.startswith("Original file line number") or 
+            stripped.startswith("Lines changed:") or
+            stripped.startswith("=======================")
+        ):
+            continue
+            
+        if stripped.startswith('diff --git') or stripped.startswith('--- a/') or stripped.startswith('+++ b/'):
             in_diff = True
             
         if in_diff:
             diff_lines.append(line)
         else:
-            # Match sender pattern (e.g. "User Name (Role)", "User Name:", "User Name")
-            chat_match = re.match(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35})(?:\s*\(.*?\))?\s*[:\-\—]?\s*(.*)$', stripped)
-            if chat_match and len(chat_match.group(1).split()) <= 4 and not stripped.startswith('http') and not stripped.startswith('#'):
+            # Match participant pattern (e.g. "User Name (Contractor)", "User Name (Admin)")
+            chat_match = re.match(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35}\s+\((?:Contractor|Employee|User|Admin|Dev|QA)\))\s*[:\-\—]?\s*(.*)$', stripped, re.IGNORECASE)
+            if chat_match:
                 sender = chat_match.group(1).strip()
                 message_text = chat_match.group(2).strip()
                 if message_text:
@@ -194,9 +204,10 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                     prev_sender, _ = chat_rows[-1]
                     chat_rows[-1] = (prev_sender, stripped)
                 else:
-                    general_lines.append(stripped)
+                    if not stripped.startswith("I want to create a guide") and not stripped.startswith("en el pull request"):
+                        general_lines.append(stripped)
 
-    # 1. Generic Chat / Transcript Summary Table
+    # 1. Chat Summary Table
     if chat_rows:
         table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
         for sender, msg in chat_rows:
@@ -206,31 +217,31 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                 
         if len(table_rows) > 2:
             sections.append({
-                "title": "Communication & Conversation Log",
+                "title": "1. Communication & Team Request Log",
                 "level": 2,
                 "content": "\n".join(table_rows)
             })
 
-    # 2. Generic Code Diff & Patch Section
+    # 2. Code Diff Patch Section
     if diff_lines:
-        diff_code_block = "```diff\n" + "\n".join(diff_lines[:200]) + "\n```"
+        diff_code_block = "```diff\n" + "\n".join(diff_lines[:250]) + "\n```"
         sections.append({
-            "title": "Code Modifications & Diff Patch",
+            "title": "2. Infrastructure Modifications & Diff Patch",
             "level": 2,
             "content": diff_code_block
         })
 
-    # 3. General Content
+    # 3. Technical Notes & Details
     if general_lines:
         sections.append({
-            "title": "Technical Notes & Input Details",
+            "title": "3. Technical Notes & Details",
             "level": 2,
             "content": "\n\n".join(general_lines)
         })
 
     if not sections:
         sections.append({
-            "title": "Document Content",
+            "title": "Technical Documentation Overview",
             "level": 1,
             "content": user_input
         })
@@ -252,17 +263,20 @@ def process_document_update(
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
     
+    # Truncate giant raw inputs for LLM prompt to prevent context overflow (max 3500 chars)
+    user_input_for_prompt = user_input if len(user_input) <= 3500 else (user_input[:2000] + "\n\n...[input truncated for context size]...\n\n" + user_input[-1500:])
+
     structure_summary = []
     for s in sections:
         structure_summary.append({
             "title": s["title"],
             "level": s["level"],
-            "content": s["content"][:1500]
+            "content": s["content"][:1000]
         })
         
     prompt = SYSTEM_DOCUMENT_ANALYZER_PROMPT.format(
         document_structure_json=json.dumps(structure_summary, indent=2),
-        user_input=user_input
+        user_input=user_input_for_prompt
     )
     
     messages = [
@@ -275,7 +289,7 @@ def process_document_update(
             role = "user" if m.get("sender") == "user" else "assistant"
             txt = clean_input_text(m.get("text", ""))
             if txt and not m.get("is_onboarding"):
-                messages.append({"role": role, "content": txt})
+                messages.append({"role": role, "content": txt[:1000]})
 
     messages.append({"role": "user", "content": prompt})
 
@@ -290,8 +304,12 @@ def process_document_update(
         explanation = "Structured technical content generated successfully."
         fallback_sec_list = fallback_parse_prompt_to_sections(user_input)
         
-        for f_sec in fallback_sec_list:
-            sections.append(f_sec)
+        # If existing document contains raw unparsed dumps (>10 raw headings or raw diff), reset to clean structured sections
+        if len(sections) > 10 or (len(sections) >= 1 and any("diff --git" in s["content"] or "--- a/" in s["content"] for s in sections)):
+            sections = fallback_sec_list
+        else:
+            for f_sec in fallback_sec_list:
+                sections.append(f_sec)
             
         updated_doc = save_updated_sections(filepath, doc_info["format"], sections)
         return updated_doc, explanation
