@@ -111,15 +111,21 @@ def create_new_document(req: CreateDocumentRequest):
     filepath = os.path.join(primary_folder, filename)
     
     try:
-        doc_info = doc_service.create_document(filepath, req.format, req.title, req.content)
-        
+        initial_content = (req.content or "").strip()
+        # If initial content contains an instruction prompt or unstructured logs, structure it!
+        if len(initial_content) > 50:
+            doc_info = doc_service.create_document(filepath, req.format, req.title, "")
+            doc_info, _ = process_document_update(filepath, initial_content)
+        else:
+            doc_info = doc_service.create_document(filepath, req.format, req.title, initial_content)
+
         # If linked to a chat, update chat active document
         if req.chat_id:
             chat_manager.update_chat_active_document(req.chat_id, filepath)
             chat_manager.add_chat_message(
                 req.chat_id, 
                 "assistant", 
-                f"✅ New document **{filename}** created successfully! You can now send me technical details or content to add.",
+                f"✅ New document **{filename}** created successfully!",
                 doc_update_info=doc_info
             )
             
