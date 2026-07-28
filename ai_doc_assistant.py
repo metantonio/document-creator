@@ -18,7 +18,7 @@ ONBOARDING_GREETING = (
 
 
 SYSTEM_DOCUMENT_ANALYZER_PROMPT = """You are an expert Technical Writer and Document Architect.
-Your task is to analyze technical content provided by the user and decide how to incorporate it into an existing technical document.
+Your task is to analyze technical content provided by the user (which may contain raw chat logs, pull request descriptions, or git diff patches) and structure it into a professional technical document.
 
 Current Document Outline & Sections:
 {document_structure_json}
@@ -29,11 +29,10 @@ User Prompt / New Information:
 Instructions:
 1. Inspect all existing titles/headings in the document outline.
 2. Determine whether the user's new information belongs inside one of the existing headings, OR if it requires creating a NEW section heading.
-3. If it belongs in an existing section:
-   - Carefully merge/integrate the new information with the existing text of that section. Preserve existing valuable content, correct formatting, and maintain smooth flow.
-4. If it requires a new section:
-   - Create a concise, professional title for the new section and generate its content.
-5. Provide your decision strictly in JSON format as follows:
+3. **RAW CHAT LOGS CONVERSION**: If the user input contains raw Teams/Slack/chat messages, do NOT output raw unstructured chat text. Instead, summarize all service requests, issues, and resolutions into a clean, professional Markdown Table with columns: `| Requester | Request / Issue | Impacted Resource | Status | Resolution Notes |`.
+4. **GIT DIFF & PULL REQUEST FORMATTING**: If the user input contains git diffs, patches, or file changes, format them cleanly using ```diff ``` code blocks, accompanied by a clear bulleted architectural summary of the changes.
+5. **DO NOT ERASE**: Preserving existing valuable document content is paramount.
+6. Provide your decision strictly in JSON format as follows:
 
 ```json
 {{

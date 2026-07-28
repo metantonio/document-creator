@@ -110,7 +110,12 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
             style_name = p.style.name if p.style else ""
             text = p.text.strip()
             
-            is_md_heading = re.match(r'^(#{1,6})\s+(.+)$', text)
+            is_md_heading = None
+            if text.startswith('#'):
+                m_h = re.match(r'^(#{1,6})\s+([A-Za-z0-9][^\-\=\#].*)$', text)
+                if m_h and not m_h.group(2).strip().startswith('--'):
+                    is_md_heading = m_h
+
             is_bold_title = (len(text) < 80 and p.runs and all(r.bold for r in p.runs) and not text.endswith('.') and not text.startswith('-') and not text.startswith('#'))
 
             if style_name.startswith('Heading') or style_name == 'Title' or is_md_heading or is_bold_title:
