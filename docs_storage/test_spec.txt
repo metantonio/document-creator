@@ -1,0 +1,5 @@
+PLAIN TEXT GUIDE
+================
+
+OVERVIEW:
+This is a plain text guide.

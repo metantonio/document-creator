@@ -1,0 +1,22 @@
+{
+  "active_provider": "local",
+  "document_paths": [
+    "C:\\Repositorios\\documentation-creator\\docs_storage"
+  ],
+  "local_config": {
+    "name": "Local LLM (Ollama / LM Studio / llama.cpp)",
+    "base_url": "http://localhost:11434/v1",
+    "model": "llama3",
+    "api_key": "ollama",
+    "temperature": 0.3,
+    "max_tokens": 4096
+  },
+  "cloud_config": {
+    "name": "Cloud LLM (OpenAI / OpenRouter / Groq)",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o",
+    "api_key": "",
+    "temperature": 0.3,
+    "max_tokens": 4096
+  }
+}

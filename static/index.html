@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocCraft AI - Technical Documentation Creator</title>
+    <!-- Google Fonts & FontAwesome -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-file-code"></i>
+                </div>
+                <div class="brand-text">
+                    <h2>DocCraft AI</h2>
+                    <span>Technical Doc Creator</span>
+                </div>
+            </div>
+
+            <!-- LLM Provider Selector -->
+            <div class="provider-selector-card">
+                <div class="provider-header">
+                    <span>Active AI Model</span>
+                    <span class="badge" id="activeProviderBadge">LOCAL</span>
+                </div>
+                <div class="provider-toggle">
+                    <button class="toggle-btn active" id="btnProviderLocal" onclick="switchProvider('local')">
+                        <i class="fa-solid fa-server"></i> Local AI
+                    </button>
+                    <button class="toggle-btn" id="btnProviderCloud" onclick="switchProvider('cloud')">
+                        <i class="fa-solid fa-cloud"></i> Cloud AI
+                    </button>
+                </div>
+                <div class="provider-info" id="providerInfoText">
+                    Ollama / llama.cpp (llama3)
+                </div>
+            </div>
+
+            <!-- New Chat Button -->
+            <button class="btn btn-primary btn-block" onclick="createNewChat()">
+                <i class="fa-solid fa-plus"></i> New Chat Session
+            </button>
+
+            <!-- Conversations List -->
+            <div class="section-title">Conversations</div>
+            <div class="chats-list" id="chatsList">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Documents Quick Access -->
+            <div class="section-title flex-between">
+                <span>Document Library</span>
+                <button class="btn-icon" onclick="openUploadModal()" title="Upload Document">
+                    <i class="fa-solid fa-upload"></i>
+                </button>
+            </div>
+            <div class="docs-list" id="docsQuickList">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Footer / Config Settings -->
+            <div class="sidebar-footer">
+                <button class="btn btn-secondary btn-block" onclick="openConfigModal()">
+                    <i class="fa-solid fa-gear"></i> Settings & Config.py
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CHAT AREA -->
+        <main class="chat-main">
+            <header class="chat-header">
+                <div class="chat-title-container">
+                    <h3 id="currentChatTitle">Select or Start a Chat</h3>
+                    <div class="active-doc-badge" id="activeDocBadge" style="display: none;">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span id="activeDocName">No Document Selected</span>
+                        <button class="btn-icon-sm" onclick="changeActiveDocument()" title="Change Document">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="btn btn-outline-sm" onclick="toggleViewerPanel()">
+                        <i class="fa-solid fa-eye"></i> <span id="toggleViewerText">Hide Document Viewer</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer">
+                <div class="empty-state" id="emptyState">
+                    <i class="fa-solid fa-comments"></i>
+                    <h4>Welcome to DocCraft AI</h4>
+                    <p>Start a new chat to begin creating or updating your technical documentation.</p>
+                </div>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <div class="chat-input-wrapper">
+                <div class="chat-input-box">
+                    <textarea id="chatInput" placeholder="Describe technical specifications, endpoints, guides, or features to add to the document..." rows="1"></textarea>
+                    <button class="btn-send" id="btnSend" onclick="sendMessage()">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="input-hints">
+                    <span><i class="fa-solid fa-wand-magic-sparkles"></i> AI will automatically detect headers/sections & merge into existing or create new ones.</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- DOCUMENT VIEWER SIDE PANEL -->
+        <section class="viewer-panel" id="viewerPanel">
+            <div class="viewer-header">
+                <div class="viewer-tabs">
+                    <button class="tab-btn active" id="tabDocPreview" onclick="switchViewerTab('preview')">
+                        <i class="fa-solid fa-file-code"></i> Live Preview
+                    </button>
+                    <button class="tab-btn" id="tabDocOutline" onclick="switchViewerTab('outline')">
+                        <i class="fa-solid fa-sitemap"></i> Heading Tree
+                    </button>
+                </div>
+                <button class="btn-icon" onclick="toggleViewerPanel()" title="Close Viewer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="viewer-meta" id="viewerMeta" style="display:none;">
+                <div>
+                    <strong id="vFileName">File.md</strong>
+                    <span class="badge badge-format" id="vFileFormat">MD</span>
+                </div>
+                <span class="text-subtle" id="vFilePath">c:/docs/...</span>
+            </div>
+
+            <div class="viewer-content" id="viewerContent">
+                <div class="empty-viewer">
+                    <i class="fa-solid fa-file-contract"></i>
+                    <p>No document loaded in viewer.</p>
+                    <p class="text-subtle">Select an active document in chat or pick one from library.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- MODAL: CREATE DOCUMENT -->
+    <div class="modal-overlay" id="createDocModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-file-circle-plus"></i> Create New Technical Document</h3>
+                <button class="btn-icon" onclick="closeModal('createDocModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Document Format</label>
+                    <div class="format-options">
+                        <label class="format-radio">
+                            <input type="radio" name="docFormat" value="md" checked>
+                            <span class="radio-card"><i class="fa-brands fa-markdown"></i> Markdown (.md)</span>
+                        </label>
+                        <label class="format-radio">
+                            <input type="radio" name="docFormat" value="docx">
+                            <span class="radio-card"><i class="fa-solid fa-file-word"></i> Word (.docx)</span>
+                        </label>
+                        <label class="format-radio">
+                            <input type="radio" name="docFormat" value="txt">
+                            <span class="radio-card"><i class="fa-solid fa-file-lines"></i> Plain Text (.txt)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Document Title</label>
+                    <input type="text" id="newDocTitle" placeholder="e.g. API Architecture Specification" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Initial Content / Overview</label>
+                    <textarea id="newDocContent" rows="4" placeholder="Brief summary or introductory outline..." class="form-control"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('createDocModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitCreateDocument()">Create & Attach to Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: SELECT EXISTING DOCUMENT -->
+    <div class="modal-overlay" id="selectDocModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-folder-open"></i> Select Existing Document</h3>
+                <button class="btn-icon" onclick="closeModal('selectDocModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="docs-modal-grid" id="docsModalGrid">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('selectDocModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: UPLOAD FILE -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-upload"></i> Upload Document</h3>
+                <button class="btn-icon" onclick="closeModal('uploadModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-dropzone" onclick="document.getElementById('fileInput').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <p>Click or drag file here to upload</p>
+                    <span class="text-subtle">Supports .docx, .md, .txt</span>
+                    <input type="file" id="fileInput" accept=".docx,.md,.txt" style="display: none;" onchange="handleFileSelect(event)">
+                </div>
+                <div id="uploadFileName" class="selected-file-info"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('uploadModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitUploadFile()">Upload File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CONFIG & SETTINGS -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-sliders"></i> Configuration & LLM Settings (config.py)</h3>
+                <button class="btn-icon" onclick="closeModal('configModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="config-tabs">
+                    <button class="cfg-tab-btn active" id="cfgTabLocal" onclick="switchConfigTab('local')">Local LLM Settings</button>
+                    <button class="cfg-tab-btn" id="cfgTabCloud" onclick="switchConfigTab('cloud')">Cloud LLM Settings</button>
+                    <button class="cfg-tab-btn" id="cfgTabPaths" onclick="switchConfigTab('paths')">Document Paths</button>
+                </div>
+
+                <!-- LOCAL CONFIG -->
+                <div class="config-pane active" id="cfgPaneLocal">
+                    <p class="cfg-desc"><i class="fa-solid fa-info-circle"></i> Configure connection parameters for local models like <strong>Ollama</strong>, <strong>llama.cpp</strong>, or <strong>LM Studio</strong>.</p>
+                    <div class="form-group">
+                        <label>Base URL Endpoint</label>
+                        <input type="text" id="cfgLocalBaseUrl" class="form-control" placeholder="http://localhost:11434/v1">
+                        <small class="text-subtle">Ollama: http://localhost:11434/v1 | llama.cpp: http://localhost:8080/v1 | LM Studio: http://localhost:1234/v1</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Model Name</label>
+                        <input type="text" id="cfgLocalModel" class="form-control" placeholder="llama3">
+                    </div>
+                    <div class="form-group">
+                        <label>API Key / Token (if required)</label>
+                        <input type="text" id="cfgLocalApiKey" class="form-control" placeholder="ollama">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label>Temperature</label>
+                            <input type="number" step="0.1" min="0" max="1" id="cfgLocalTemp" class="form-control">
+                        </div>
+                        <div class="form-group col">
+                            <label>Max Tokens</label>
+                            <input type="number" id="cfgLocalMaxTokens" class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CLOUD CONFIG -->
+                <div class="config-pane" id="cfgPaneCloud" style="display:none;">
+                    <p class="cfg-desc"><i class="fa-solid fa-info-circle"></i> Configure connection parameters for cloud providers (OpenAI, OpenRouter, Groq, Anthropic proxy, etc.).</p>
+                    <div class="form-group">
+                        <label>Base URL Endpoint</label>
+                        <input type="text" id="cfgCloudBaseUrl" class="form-control" placeholder="https://api.openai.com/v1">
+                        <small class="text-subtle">OpenAI: https://api.openai.com/v1 | OpenRouter: https://openrouter.ai/api/v1</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Model Name</label>
+                        <input type="text" id="cfgCloudModel" class="form-control" placeholder="gpt-4o">
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="cfgCloudApiKey" class="form-control" placeholder="sk-...">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label>Temperature</label>
+                            <input type="number" step="0.1" min="0" max="1" id="cfgCloudTemp" class="form-control">
+                        </div>
+                        <div class="form-group col">
+                            <label>Max Tokens</label>
+                            <input type="number" id="cfgCloudMaxTokens" class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DOCUMENT PATHS -->
+                <div class="config-pane" id="cfgPanePaths" style="display:none;">
+                    <p class="cfg-desc"><i class="fa-solid fa-folder-tree"></i> Configure multiple folder paths where the application searches for documents.</p>
+                    <div class="form-group">
+                        <label>Configured Document Directories</label>
+                        <div id="pathsList" class="paths-list"></div>
+                    </div>
+                    <div class="form-row">
+                        <input type="text" id="newFolderPath" class="form-control" placeholder="c:/path/to/my/documents">
+                        <button class="btn btn-secondary" onclick="addDocumentPath()"><i class="fa-solid fa-plus"></i> Add Path</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer flex-between">
+                <span class="text-subtle" id="configSaveStatus"></span>
+                <div>
+                    <button class="btn btn-secondary" onclick="closeModal('configModal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveConfiguration()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
