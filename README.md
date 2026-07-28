@@ -81,8 +81,9 @@ Open your web browser and navigate to:
   - Create and edit **Markdown (`.md`)**, **Microsoft Word (`.docx`)**, and **Plain Text (`.txt`)** files.
   - **Native Word Formatting**: Markdown tables are automatically rendered into **native Word tables** with header shading, borders, and alternating row colors. Code blocks use `Consolas` code containers, links use blue underlined runs, and list items use native Word list styles.
 
-- **Interactive Onboarding in Chat**:
-  - Each conversation begins with an onboarding prompt asking whether you want to **Start a New Document** or **Edit an Existing Document**.
+- **Interactive Onboarding & Multiline Paste**:
+  - Each conversation begins with an onboarding prompt asking whether you want to **Start a New Document**, **Edit an Existing Document**, or **Analyze a Repository**.
+  - **Pristine Multiline Formatting**: Full support for pasting large text blocks, logs, code, or tables from the clipboard with exact line breaks, indentation, and auto-expanding input area.
 
 - **Dynamic `config.py` UI Editor**:
   - Modify parameters (Base URLs, Model Names, API Keys, Temperatures, Max Tokens, and Document Paths) directly inside the UI Settings modal without manually editing code.

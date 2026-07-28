@@ -261,7 +261,8 @@ body {
     justify-content: space-between;
 }
 
-.chats-list, .docs-list {
+.chats-list,
+.docs-list {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -274,7 +275,8 @@ body {
     max-height: none;
 }
 
-.chat-item, .doc-item {
+.chat-item,
+.doc-item {
     padding: 10px 12px;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -288,12 +290,14 @@ body {
     transition: all 0.2s ease;
 }
 
-.chat-item:hover, .doc-item:hover {
+.chat-item:hover,
+.doc-item:hover {
     background: var(--bg-card-hover);
     color: var(--text-main);
 }
 
-.chat-item.active, .doc-item.active {
+.chat-item.active,
+.doc-item.active {
     background: rgba(99, 102, 241, 0.15);
     border-color: var(--accent-primary);
     color: var(--text-main);
@@ -369,10 +373,10 @@ body {
 .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 12px;
 }
 
 .empty-state {
@@ -426,10 +430,58 @@ body {
 .message-content {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    padding: 14px 18px;
+    padding: 10px 14px;
     border-radius: var(--radius-md);
-    line-height: 1.6;
+    line-height: 1.5;
     font-size: 14px;
+    word-break: break-word;
+}
+
+.message-content p {
+    margin: 0 0 6px 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content pre {
+    margin: 8px 0;
+    padding: 10px 12px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+}
+
+.message-content code {
+    font-family: 'Consolas', monospace;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.message-content ul, .message-content ol {
+    margin: 6px 0 6px 20px;
+}
+
+.message-content table {
+    margin: 8px 0;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.message-content th, .message-content td {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+}
+
+.message-content th {
+    background: var(--bg-dark);
 }
 
 .message-row.user .message-content {
@@ -492,7 +544,9 @@ body {
     font-size: 14px;
     resize: none;
     outline: none;
-    max-height: 120px;
+    max-height: 200px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .btn-send {
@@ -728,7 +782,7 @@ body {
     transition: all 0.2s ease;
 }
 
-.format-radio input:checked + .radio-card {
+.format-radio input:checked+.radio-card {
     border-color: var(--accent-primary);
     color: #fff;
     background: rgba(99, 102, 241, 0.2);

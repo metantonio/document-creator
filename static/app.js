@@ -8,6 +8,14 @@ let currentViewerTab = 'preview';
 
 // INITIALIZATION
 document.addEventListener('DOMContentLoaded', async () => {
+    // Configure marked to convert single newlines into <br> line breaks
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+    }
+
     await fetchConfig();
     await fetchChats();
     await fetchDocuments();
@@ -20,11 +28,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         createNewChat();
     }
 
-    // Auto-resize chat textarea
+    // Auto-resize chat textarea on input & paste
     const chatInput = document.getElementById('chatInput');
-    chatInput.addEventListener('input', () => {
+    const resizeTextarea = () => {
         chatInput.style.height = 'auto';
-        chatInput.style.height = (chatInput.scrollHeight) + 'px';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+    };
+    
+    chatInput.addEventListener('input', resizeTextarea);
+    chatInput.addEventListener('paste', () => {
+        setTimeout(resizeTextarea, 10);
     });
 
     chatInput.addEventListener('keydown', (e) => {
