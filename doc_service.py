@@ -92,46 +92,55 @@ def parse_markdown_or_txt(content: str) -> List[Dict[str, Any]]:
 
 
 def parse_docx(filepath: str) -> List[Dict[str, Any]]:
-    """Parse headings and section text from a .docx file."""
+    """Parse headings, section text, and tables in exact document order from a .docx file."""
+    from docx.oxml.text.paragraph import CT_P
+    from docx.oxml.table import CT_Tbl
+    from docx.text.paragraph import Paragraph
+    from docx.table import Table
+
     doc = Document(filepath)
     sections = []
     current_title = "Document Overview"
     current_level = 1
     current_lines = []
 
-    for p in doc.paragraphs:
-        style_name = p.style.name if p.style else ""
-        text = p.text.strip()
-        
-        if style_name.startswith('Heading') or style_name == 'Title':
-            if current_lines or sections:
-                sections.append({
-                    "title": current_title,
-                    "level": current_level,
-                    "content": "\n".join(current_lines).strip()
-                })
+    for child in doc.element.body:
+        if isinstance(child, CT_P):
+            p = Paragraph(child, doc)
+            style_name = p.style.name if p.style else ""
+            text = p.text.strip()
             
-            if style_name == 'Title':
-                current_level = 1
+            if style_name.startswith('Heading') or style_name == 'Title':
+                if current_lines or sections:
+                    sections.append({
+                        "title": current_title,
+                        "level": current_level,
+                        "content": "\n".join(current_lines).strip()
+                    })
+                
+                if style_name == 'Title':
+                    current_level = 1
+                else:
+                    try:
+                        current_level = int(style_name.replace('Heading', '').strip())
+                    except ValueError:
+                        current_level = 2
+                current_title = text if text else "Untitled Section"
+                current_lines = []
             else:
-                try:
-                    current_level = int(style_name.replace('Heading', '').strip())
-                except ValueError:
-                    current_level = 2
-            current_title = text if text else "Untitled Section"
-            current_lines = []
-        else:
-            if p.text:
-                current_lines.append(p.text)
-
-    # Read native docx tables text as well
-    for table in doc.tables:
-        table_text_lines = []
-        for row in table.rows:
-            row_vals = [c.text.strip() for c in row.cells]
-            table_text_lines.append(" | ".join(row_vals))
-        if table_text_lines:
-            current_lines.append("\n" + "\n".join(table_text_lines) + "\n")
+                if p.text:
+                    current_lines.append(p.text)
+                    
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, doc)
+            table_lines = []
+            for r_idx, row in enumerate(table.rows):
+                row_vals = [c.text.strip().replace('\n', ' ') for c in row.cells]
+                table_lines.append("| " + " | ".join(row_vals) + " |")
+                if r_idx == 0:
+                    table_lines.append("| " + " | ".join(["---"] * len(row_vals)) + " |")
+            if table_lines:
+                current_lines.append("\n" + "\n".join(table_lines) + "\n")
 
     if current_lines or not sections:
         sections.append({

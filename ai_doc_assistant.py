@@ -139,7 +139,7 @@ def process_document_update(
         structure_summary.append({
             "title": s["title"],
             "level": s["level"],
-            "preview": s["content"][:200] + ("..." if len(s["content"]) > 200 else "")
+            "content": s["content"][:1500]
         })
         
     prompt = SYSTEM_DOCUMENT_ANALYZER_PROMPT.format(
@@ -160,7 +160,7 @@ def process_document_update(
     if not analysis or not isinstance(analysis, dict) or "action" not in analysis:
         explanation = f"Updated document based on your input:\n{llm_output}"
         if sections:
-            sections[0]["content"] += f"\n\n{user_input}"
+            sections[0]["content"] = sections[0]["content"].strip() + f"\n\n{user_input.strip()}"
         else:
             sections.append({"title": "General Updates", "level": 1, "content": user_input})
         updated_doc = save_updated_sections(filepath, doc_info["format"], sections)
@@ -179,11 +179,18 @@ def process_document_update(
     if action == "merge_existing":
         for sec in sections:
             if sec["title"].strip().lower() == target_heading.strip().lower():
-                sec["content"] = updated_content
+                original_text = sec["content"].strip()
+                new_text = updated_content.strip()
+                
+                # Failsafe: Preserve original section content if not included in LLM output
+                if original_text and (original_text not in new_text):
+                    sec["content"] = f"{original_text}\n\n{new_text}"
+                else:
+                    sec["content"] = new_text
                 found_target = True
             updated_sections.append(sec)
         if not found_target and updated_sections:
-            updated_sections[-1]["content"] += f"\n\n{updated_content}"
+            updated_sections[-1]["content"] = updated_sections[-1]["content"].strip() + f"\n\n{updated_content.strip()}"
     else: # add_new
         new_sec = {
             "title": new_heading_title or "New Section",
