@@ -3,6 +3,9 @@ import re
 from typing import List, Dict, Any, Optional
 import docx
 from docx import Document
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
+from docx.shared import Pt, RGBColor
 
 def normalize_path(path: str) -> str:
     return os.path.abspath(path)
@@ -39,7 +42,6 @@ def list_all_documents(document_paths: List[str]) -> List[Dict[str, Any]]:
                     except Exception as e:
                         print(f"Error reading file stat for {full_path}: {e}")
 
-    # Sort by modification time descending
     documents.sort(key=lambda x: x["modified_time"], reverse=True)
     return documents
 
@@ -53,10 +55,8 @@ def parse_markdown_or_txt(content: str) -> List[Dict[str, Any]]:
     current_lines = []
 
     for line in lines:
-        # Check for Markdown heading e.g. # Title, ## Subtitle
         match = re.match(r'^(#{1,6})\s+(.+)$', line.strip())
         if match:
-            # Save previous section if it has content
             if current_lines or sections:
                 sections.append({
                     "title": current_title,
@@ -67,7 +67,6 @@ def parse_markdown_or_txt(content: str) -> List[Dict[str, Any]]:
             current_title = match.group(2).strip()
             current_lines = []
         else:
-            # Check for standard text uppercase title heuristic e.g. "INTRODUCTION:"
             txt_heading_match = re.match(r'^([A-Z0-9\s_\-]{3,50}):$', line.strip())
             if txt_heading_match and not line.startswith('#'):
                 if current_lines or sections:
@@ -104,7 +103,6 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
         style_name = p.style.name if p.style else ""
         text = p.text.strip()
         
-        # Check if paragraph is a Heading
         if style_name.startswith('Heading') or style_name == 'Title':
             if current_lines or sections:
                 sections.append({
@@ -126,6 +124,15 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
             if p.text:
                 current_lines.append(p.text)
 
+    # Read native docx tables text as well
+    for table in doc.tables:
+        table_text_lines = []
+        for row in table.rows:
+            row_vals = [c.text.strip() for c in row.cells]
+            table_text_lines.append(" | ".join(row_vals))
+        if table_text_lines:
+            current_lines.append("\n" + "\n".join(table_text_lines) + "\n")
+
     if current_lines or not sections:
         sections.append({
             "title": current_title,
@@ -145,7 +152,11 @@ def read_document(filepath: str) -> Dict[str, Any]:
     
     if ext == '.docx':
         doc = Document(filepath)
-        full_text = "\n\n".join([p.text for p in doc.paragraphs if p.text])
+        full_text_parts = [p.text for p in doc.paragraphs if p.text]
+        for t in doc.tables:
+            for r in t.rows:
+                full_text_parts.append(" | ".join([c.text.strip() for c in r.cells]))
+        full_text = "\n\n".join(full_text_parts)
         sections = parse_docx(filepath)
     else:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
@@ -164,6 +175,156 @@ def read_document(filepath: str) -> Dict[str, Any]:
     }
 
 
+def render_inline_markdown(paragraph, text: str):
+    """Parse inline bold (**text**), italic (*text*), code (`code`), and link ([text](url)) into docx runs."""
+    pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\[.*?\]\(.*?\))'
+    tokens = re.split(pattern, text)
+    
+    for token in tokens:
+        if not token:
+            continue
+        if token.startswith('**') and token.endswith('**'):
+            run = paragraph.add_run(token[2:-2])
+            run.bold = True
+        elif token.startswith('*') and token.endswith('*'):
+            run = paragraph.add_run(token[1:-1])
+            run.italic = True
+        elif token.startswith('`') and token.endswith('`'):
+            run = paragraph.add_run(token[1:-1])
+            run.font.name = 'Consolas'
+            run.font.size = Pt(9.5)
+            run.font.color.rgb = RGBColor(71, 85, 105)
+        elif token.startswith('[') and ']' in token and '(' in token and token.endswith(')'):
+            link_text = token[1:token.index(']')]
+            url = token[token.index('(')+1:-1]
+            run = paragraph.add_run(f"{link_text} ({url})")
+            run.font.color.rgb = RGBColor(5, 99, 193)
+            run.underline = True
+        else:
+            paragraph.add_run(token)
+
+
+def render_markdown_body_to_docx(doc: Document, content: str):
+    """
+    Renders markdown section body into native Word elements:
+    - Tables -> Native docx tables with grid borders, headers, and alternating fills
+    - Code Blocks -> Native code blocks with Consolas font and background shading
+    - Bullet / Numbered Lists -> List Bullet / List Number styles
+    - Paragraphs -> Formatted runs with bold/italic/links
+    """
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
+        
+        if not line:
+            i += 1
+            continue
+            
+        # 1. Fenced Code Blocks (```python ... ```)
+        if line.startswith('```'):
+            i += 1
+            code_lines = []
+            while i < len(lines) and not lines[i].startswith('```'):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i].startswith('```'):
+                i += 1
+                
+            code_text = "\n".join(code_lines)
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Pt(12)
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(4)
+            run = p.add_run(code_text)
+            run.font.name = 'Consolas'
+            run.font.size = Pt(9.5)
+            run.font.color.rgb = RGBColor(30, 41, 59)
+            
+            try:
+                shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F1F5F9"/>')
+                p._p.get_or_add_pPr().append(shd)
+            except Exception:
+                pass
+            continue
+
+        # 2. Markdown Tables (| Col1 | Col2 |)
+        if line.strip().startswith('|') and '|' in line.strip()[1:]:
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                table_lines.append(lines[i].strip())
+                i += 1
+                
+            parsed_rows = []
+            for t_line in table_lines:
+                if re.match(r'^\|[\s:\-|\+]+\|$', t_line):
+                    continue
+                cells = [c.strip() for c in t_line.strip('|').split('|')]
+                parsed_rows.append(cells)
+                
+            if parsed_rows:
+                num_cols = max(len(row) for row in parsed_rows)
+                num_rows = len(parsed_rows)
+                
+                table = doc.add_table(rows=num_rows, cols=num_cols)
+                table.style = 'Table Grid'
+                
+                for r_idx, row_cells in enumerate(parsed_rows):
+                    row = table.rows[r_idx]
+                    for c_idx, cell_value in enumerate(row_cells):
+                        if c_idx < len(row.cells):
+                            cell = row.cells[c_idx]
+                            cell.text = ""
+                            p = cell.paragraphs[0]
+                            render_inline_markdown(p, cell_value)
+                            
+                            if r_idx == 0: # Header Row
+                                for run in p.runs:
+                                    run.font.bold = True
+                                    run.font.color.rgb = RGBColor(255, 255, 255)
+                                try:
+                                    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="4F46E5"/>')
+                                    cell._tc.get_or_add_tcPr().append(shd)
+                                except Exception:
+                                    pass
+                            elif r_idx % 2 == 1: # Alternating row fill
+                                try:
+                                    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F8FAFC"/>')
+                                    cell._tc.get_or_add_tcPr().append(shd)
+                                except Exception:
+                                    pass
+            continue
+
+        # 3. Headings inside content (#, ##, ###)
+        heading_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        if heading_match:
+            level = len(heading_match.group(1))
+            heading_text = heading_match.group(2).strip()
+            doc.add_heading(heading_text, level=min(level, 4))
+            i += 1
+            continue
+
+        # 4. Bullet / Numbered Lists
+        bullet_match = re.match(r'^\s*[\-\*]\s+(.+)$', line)
+        number_match = re.match(r'^\s*\d+\.\s+(.+)$', line)
+        
+        if bullet_match:
+            p = doc.add_paragraph(style='List Bullet')
+            render_inline_markdown(p, bullet_match.group(1).strip())
+            i += 1
+            continue
+        elif number_match:
+            p = doc.add_paragraph(style='List Number')
+            render_inline_markdown(p, number_match.group(1).strip())
+            i += 1
+            continue
+
+        # 5. Standard Paragraphs
+        p = doc.add_paragraph()
+        render_inline_markdown(p, line)
+        i += 1
+
+
 def create_document(filepath: str, format_type: str, title: str, content: str) -> Dict[str, Any]:
     """Create a new document file (.md, .txt, or .docx)."""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -172,15 +333,7 @@ def create_document(filepath: str, format_type: str, title: str, content: str) -
     if format_type == "docx":
         doc = Document()
         doc.add_heading(title, level=1)
-        for line in content.splitlines():
-            if line.strip():
-                if line.startswith('#'):
-                    # Heading in content
-                    level = len(line) - len(line.lstrip('#'))
-                    heading_text = line.lstrip('#').strip()
-                    doc.add_heading(heading_text, level=min(level, 4))
-                else:
-                    doc.add_paragraph(line)
+        render_markdown_body_to_docx(doc, content)
         doc.save(filepath)
     elif format_type == "md":
         formatted_content = f"# {title}\n\n{content}"
@@ -200,14 +353,12 @@ def save_updated_sections(filepath: str, format_type: str, sections: List[Dict[s
     
     if format_type == "docx":
         doc = Document()
-        for idx, sec in enumerate(sections):
+        for sec in sections:
             level = max(1, min(sec.get("level", 2), 4))
             doc.add_heading(sec["title"], level=level)
             body = sec.get("content", "")
             if body:
-                for paragraph in body.split("\n\n"):
-                    if paragraph.strip():
-                        doc.add_paragraph(paragraph.strip())
+                render_markdown_body_to_docx(doc, body)
         doc.save(filepath)
     elif format_type == "md":
         md_text = ""

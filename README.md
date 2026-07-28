@@ -77,8 +77,9 @@ Open your web browser and navigate to:
   - The AI reads existing titles/headings in your `.docx`, `.md`, or `.txt` document.
   - Automatically determines whether new technical information should be merged into an **existing title section** or appended as a **new section title**.
 
-- **Multi-Format Support**:
+- **Multi-Format Support (`.md`, `.docx`, `.txt`)**:
   - Create and edit **Markdown (`.md`)**, **Microsoft Word (`.docx`)**, and **Plain Text (`.txt`)** files.
+  - **Native Word Formatting**: Markdown tables are automatically rendered into **native Word tables** with header shading, borders, and alternating row colors. Code blocks use `Consolas` code containers, links use blue underlined runs, and list items use native Word list styles.
 
 - **Interactive Onboarding in Chat**:
   - Each conversation begins with an onboarding prompt asking whether you want to **Start a New Document** or **Edit an Existing Document**.
