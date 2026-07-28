@@ -199,6 +199,7 @@ def read_document(filepath: str) -> Dict[str, Any]:
 
 def render_inline_markdown(paragraph, text: str):
     """Parse inline bold (**text**), italic (*text*), code (`code`), and link ([text](url)) into docx runs."""
+    text = unescape_code_comments(text)
     pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\[.*?\]\(.*?\))'
     tokens = re.split(pattern, text)
     
@@ -322,7 +323,7 @@ def render_markdown_body_to_docx(doc: Document, body_markdown: str):
                     except Exception:
                         pass
             else:
-                code_text = "\n".join(code_lines)
+                code_text = unescape_code_comments("\n".join(code_lines))
                 p = doc.add_paragraph()
                 p.paragraph_format.left_indent = Pt(12)
                 p.paragraph_format.space_before = Pt(4)
