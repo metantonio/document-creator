@@ -17,22 +17,31 @@ ONBOARDING_GREETING = (
 )
 
 
-SYSTEM_DOCUMENT_ANALYZER_PROMPT = """You are an expert Technical Writer and Document Architect.
-Your task is to analyze technical content provided by the user (which may contain raw chat logs, pull request descriptions, or git diff patches) and structure it into a professional technical document.
+SYSTEM_DOCUMENT_ANALYZER_PROMPT = """You are a Lead Software Architect and Senior Technical Author.
+Your task is to perform DEEP TECHNICAL ANALYSIS on the user's input (which may contain raw chat transcripts, pull request details, or git diff patches) and author high-quality, production-grade technical documentation.
 
 Current Document Outline & Sections:
 {document_structure_json}
 
-User Prompt / New Information:
+User Technical Input:
 "{user_input}"
 
 Instructions:
-1. Inspect all existing titles/headings in the document outline.
-2. Determine whether the user's new information belongs inside one of the existing headings, OR if it requires creating a NEW section heading.
-3. **RAW CHAT LOGS CONVERSION**: If the user input contains raw Teams/Slack/chat messages, do NOT output raw unstructured chat text. Instead, summarize all service requests, issues, and resolutions into a clean, professional Markdown Table with columns: `| Requester | Request / Issue | Impacted Resource | Status | Resolution Notes |`.
-4. **GIT DIFF & PULL REQUEST FORMATTING**: If the user input contains git diffs, patches, or file changes, format them cleanly using ```diff ``` code blocks, accompanied by a clear bulleted architectural summary of the changes.
-5. **DO NOT ERASE**: Preserving existing valuable document content is paramount.
-6. Provide your decision strictly in JSON format as follows:
+1. **DEEP ARCHITECTURAL ANALYSIS & EXPLANATIONS**:
+   - Do NOT just copy raw code or chat lines verbatim.
+   - For any code changes, diffs, or infrastructure updates: Explain WHY the change was made, WHAT problem it solves, and HOW the technical mechanics work (e.g. proxy TLS decryption limits, GCS mirror fallbacks, cross-region latency, IAM grants).
+   - Write clear explanatory prose and bullet points before presenting code snippets or tables.
+
+2. **CONVERSATION & TRANSCRIPT SYNTHESIS**:
+   - If the input contains raw team chat logs (Teams/Slack), synthesize all requests into a clean, professional Markdown Table: `| Requester | Request / Issue | Impacted Resource | Status | Resolution & Architectural Summary |`.
+
+3. **COLOR-CODED GIT DIFF CODE BLOCKS**:
+   - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
+
+4. **NO UI METADATA OR SYSTEM ARTIFACTS**:
+   - Never output UI status badges, "Document Updated!" lines, or assistant UI metadata cards.
+
+5. Provide your decision strictly in JSON format as follows:
 
 ```json
 {{
@@ -40,7 +49,7 @@ Instructions:
   "target_heading": "Exact Title of Existing Heading" (if merge_existing, or closest preceding heading if add_new),
   "new_heading_title": "Title of New Section" (only if action is add_new, otherwise null),
   "heading_level": 2 (number 1 to 4 for heading level),
-  "updated_section_content": "The full updated content for this section in Markdown format",
+  "updated_section_content": "The full updated, deeply analyzed content for this section in Markdown format",
   "explanation": "Clear, concise 1-2 sentence explanation of what was modified or added in the document."
 }}
 ```
@@ -105,6 +114,31 @@ Instructions:
 Only return valid JSON inside a ```json ``` block.
 """
 
+
+def clean_input_text(text: str) -> str:
+    """Filter out UI system status badges, metadata cards, and assistant notifications from text."""
+    if not text:
+        return ""
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        s = line.strip()
+        if (
+            s.startswith("📝") or 
+            s.startswith("📂") or 
+            s.startswith("✅") or 
+            s.startswith("❌") or 
+            "Document Updated!" in s or 
+            "Updated file:" in s or 
+            "section headings in document" in s or 
+            "Structured technical content generated successfully" in s or
+            "Loaded existing document" in s
+        ):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def extract_json_from_response(text: str) -> Any:
     """Helper to parse JSON block from LLM output."""
     pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
@@ -126,6 +160,7 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     Generic failsafe parser that dynamically converts ANY raw prompt input 
     (chat transcripts, logs, code diffs, or instructions) into clean Markdown sections.
     """
+    user_input = clean_input_text(user_input)
     lines = user_input.splitlines()
     sections = []
     
@@ -213,6 +248,7 @@ def process_document_update(
     Analyzes document headings, uses AI to decide merge vs new section, 
     incorporates chat history context, applies the update to disk, and returns (updated_doc_dict, explanation).
     """
+    user_input = clean_input_text(user_input)
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
     
@@ -237,7 +273,7 @@ def process_document_update(
     if chat_history:
         for m in chat_history[-8:]:
             role = "user" if m.get("sender") == "user" else "assistant"
-            txt = m.get("text", "").strip()
+            txt = clean_input_text(m.get("text", ""))
             if txt and not m.get("is_onboarding"):
                 messages.append({"role": role, "content": txt})
 
