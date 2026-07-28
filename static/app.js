@@ -200,6 +200,15 @@ function updateActiveDocBadge() {
     }
 }
 
+function formatMessageContent(text) {
+    if (!text) return '';
+    if (typeof marked !== 'undefined') {
+        let html = marked.parse(text);
+        return html.replace(/>\s*\n\s*</g, '><').trim();
+    }
+    return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
 function renderMessages(messages) {
     const container = document.getElementById('messagesContainer');
     document.getElementById('emptyState').style.display = 'none';
@@ -210,7 +219,7 @@ function renderMessages(messages) {
         row.className = `message-row ${msg.sender}`;
         
         const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
-        let parsedText = typeof marked !== 'undefined' ? marked.parse(msg.text) : escapeHtml(msg.text);
+        let parsedText = formatMessageContent(msg.text);
 
         let contentHtml = `
             <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
@@ -268,7 +277,7 @@ async function sendMessage() {
     userRow.className = 'message-row user';
     userRow.innerHTML = `
         <div class="avatar"><i class="fa-solid fa-user"></i></div>
-        <div class="message-content">${escapeHtml(text)}</div>
+        <div class="message-content"><div>${formatMessageContent(text)}</div></div>
     `;
     container.appendChild(userRow);
     container.scrollTop = container.scrollHeight;
@@ -585,14 +594,14 @@ function populateConfigModal() {
     document.getElementById('cfgLocalBaseUrl').value = lcfg.base_url || 'http://localhost:11434/v1';
     document.getElementById('cfgLocalModel').value = lcfg.model || 'llama3';
     document.getElementById('cfgLocalApiKey').value = lcfg.api_key || 'ollama';
-    document.getElementById('cfgLocalTemp').value = lcfg.temperature || 0.3;
-    document.getElementById('cfgLocalMaxTokens').value = lcfg.max_tokens || 4096;
+    document.getElementById('cfgLocalTemp').value = lcfg.temperature !== undefined ? lcfg.temperature : 0.3;
+    document.getElementById('cfgLocalMaxTokens').value = lcfg.max_tokens !== undefined && lcfg.max_tokens !== null ? lcfg.max_tokens : 0;
 
     document.getElementById('cfgCloudBaseUrl').value = ccfg.base_url || 'https://api.openai.com/v1';
     document.getElementById('cfgCloudModel').value = ccfg.model || 'gpt-4o';
     document.getElementById('cfgCloudApiKey').value = ccfg.api_key || '';
-    document.getElementById('cfgCloudTemp').value = ccfg.temperature || 0.3;
-    document.getElementById('cfgCloudMaxTokens').value = ccfg.max_tokens || 4096;
+    document.getElementById('cfgCloudTemp').value = ccfg.temperature !== undefined ? ccfg.temperature : 0.3;
+    document.getElementById('cfgCloudMaxTokens').value = ccfg.max_tokens !== undefined && ccfg.max_tokens !== null ? ccfg.max_tokens : 32768;
 
     renderDocumentPathsList(currentConfig.document_paths || []);
 }
@@ -641,6 +650,9 @@ function switchConfigTab(tab) {
 }
 
 async function saveConfiguration() {
+    const localMT = parseInt(document.getElementById('cfgLocalMaxTokens').value);
+    const cloudMT = parseInt(document.getElementById('cfgCloudMaxTokens').value);
+
     const payload = {
         document_paths: currentConfig.document_paths,
         local_config: {
@@ -648,14 +660,14 @@ async function saveConfiguration() {
             model: document.getElementById('cfgLocalModel').value.trim(),
             api_key: document.getElementById('cfgLocalApiKey').value.trim(),
             temperature: parseFloat(document.getElementById('cfgLocalTemp').value),
-            max_tokens: parseInt(document.getElementById('cfgLocalMaxTokens').value)
+            max_tokens: isNaN(localMT) ? 0 : localMT
         },
         cloud_config: {
             base_url: document.getElementById('cfgCloudBaseUrl').value.trim(),
             model: document.getElementById('cfgCloudModel').value.trim(),
             api_key: document.getElementById('cfgCloudApiKey').value.trim(),
             temperature: parseFloat(document.getElementById('cfgCloudTemp').value),
-            max_tokens: parseInt(document.getElementById('cfgCloudMaxTokens').value)
+            max_tokens: isNaN(cloudMT) ? 32768 : cloudMT
         }
     };
 

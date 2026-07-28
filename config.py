@@ -28,6 +28,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     }
 }
 
+def deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge source dict into target dict."""
+    for key, value in source.items():
+        if isinstance(value, dict) and key in target and isinstance(target[key], dict):
+            deep_merge(target[key], value)
+        else:
+            target[key] = value
+    return target
+
 def load_config() -> Dict[str, Any]:
     """Load configuration from config.json or fallback to DEFAULT_CONFIG."""
     config = json.loads(json.dumps(DEFAULT_CONFIG))
@@ -35,7 +44,7 @@ def load_config() -> Dict[str, Any]:
         try:
             with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                config.update(saved)
+                deep_merge(config, saved)
         except Exception as e:
             print(f"Error loading config.json: {e}")
     
@@ -51,7 +60,7 @@ def load_config() -> Dict[str, Any]:
 def save_config(new_config: Dict[str, Any]) -> Dict[str, Any]:
     """Save configuration to config.json."""
     current = load_config()
-    current.update(new_config)
+    deep_merge(current, new_config)
     
     # Ensure document paths exist
     for path in current.get("document_paths", []):
