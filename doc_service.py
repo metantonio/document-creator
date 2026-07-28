@@ -110,7 +110,10 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
             style_name = p.style.name if p.style else ""
             text = p.text.strip()
             
-            if style_name.startswith('Heading') or style_name == 'Title':
+            is_md_heading = re.match(r'^(#{1,6})\s+(.+)$', text)
+            is_bold_title = (len(text) < 80 and p.runs and all(r.bold for r in p.runs) and not text.endswith('.') and not text.startswith('-') and not text.startswith('#'))
+
+            if style_name.startswith('Heading') or style_name == 'Title' or is_md_heading or is_bold_title:
                 if current_lines or sections:
                     sections.append({
                         "title": current_title,
@@ -118,14 +121,18 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
                         "content": "\n".join(current_lines).strip()
                     })
                 
-                if style_name == 'Title':
+                if is_md_heading:
+                    current_level = len(is_md_heading.group(1))
+                    current_title = is_md_heading.group(2).strip()
+                elif style_name == 'Title' or (is_bold_title and current_level == 1):
                     current_level = 1
+                    current_title = text if text else "Untitled Section"
                 else:
                     try:
                         current_level = int(style_name.replace('Heading', '').strip())
                     except ValueError:
                         current_level = 2
-                current_title = text if text else "Untitled Section"
+                    current_title = text if text else "Untitled Section"
                 current_lines = []
             else:
                 if p.text:
@@ -300,6 +307,66 @@ def render_markdown_body_to_docx(doc: Document, content: str):
                     pass
             continue
 
+        # 1.5 Callouts / Blockquotes (> [!NOTE] text...)
+        if line.strip().startswith('>'):
+            quote_lines = []
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                quote_lines.append(re.sub(r'^\s*>\s?', '', lines[i]))
+                i += 1
+            
+            quote_text = "\n".join(quote_lines).strip()
+            
+            border_color = "4F46E5" # Indigo Note
+            bg_color = "EEF2FF"
+            callout_title = "NOTE"
+            
+            if quote_text.startswith('[!WARNING]') or quote_text.startswith('[!CAUTION]'):
+                border_color = "EF4444" # Red
+                bg_color = "FEF2F2"
+                callout_title = "WARNING"
+                quote_text = re.sub(r'^\[!(WARNING|CAUTION)\]\s*', '', quote_text)
+            elif quote_text.startswith('[!IMPORTANT]'):
+                border_color = "F59E0B" # Amber
+                bg_color = "FFFBEB"
+                callout_title = "IMPORTANT"
+                quote_text = re.sub(r'^\[!IMPORTANT\]\s*', '', quote_text)
+            elif quote_text.startswith('[!TIP]'):
+                border_color = "10B981" # Green
+                bg_color = "ECFDF5"
+                callout_title = "TIP"
+                quote_text = re.sub(r'^\[!TIP\]\s*', '', quote_text)
+            elif quote_text.startswith('[!NOTE]'):
+                quote_text = re.sub(r'^\[!NOTE\]\s*', '', quote_text)
+
+            callout_table = doc.add_table(rows=1, cols=1)
+            callout_cell = callout_table.rows[0].cells[0]
+            cp = callout_cell.paragraphs[0]
+            cp.paragraph_format.space_before = Pt(2)
+            cp.paragraph_format.space_after = Pt(2)
+            
+            run_lbl = cp.add_run(f"📌 {callout_title}: ")
+            run_lbl.font.bold = True
+            run_lbl.font.color.rgb = RGBColor.from_string(border_color)
+            
+            render_inline_markdown(cp, quote_text)
+            
+            try:
+                tcPr = callout_cell._tc.get_or_add_tcPr()
+                shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}"/>')
+                borders = parse_xml(f'''
+                    <w:tcBorders {nsdecls("w")}>
+                        <w:left w:val="single" w:sz="24" w:space="0" w:color="{border_color}"/>
+                        <w:top w:val="none"/>
+                        <w:right w:val="none"/>
+                        <w:bottom w:val="none"/>
+                    </w:tcBorders>
+                ''')
+                tcPr.append(shd)
+                tcPr.append(borders)
+            except Exception:
+                pass
+            continue
+
         # 2. Markdown Tables (| Col1 | Col2 |)
         if line.strip().startswith('|') and '|' in line.strip()[1:]:
             table_lines = []
@@ -323,6 +390,21 @@ def render_markdown_body_to_docx(doc: Document, content: str):
                 
                 for r_idx, row_cells in enumerate(parsed_rows):
                     row = table.rows[r_idx]
+                    
+                    # Prevent row split across pages
+                    try:
+                        trPr = row._tr.get_or_add_trPr()
+                        trPr.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
+                    except Exception:
+                        pass
+
+                    if r_idx == 0:
+                        try:
+                            trPr = row._tr.get_or_add_trPr()
+                            trPr.append(parse_xml(f'<w:tblHeader {nsdecls("w")}/>'))
+                        except Exception:
+                            pass
+
                     for c_idx, cell_value in enumerate(row_cells):
                         if c_idx < len(row.cells):
                             cell = row.cells[c_idx]
