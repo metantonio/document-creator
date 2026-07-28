@@ -33,12 +33,16 @@ def generate_chat_response(messages: List[Dict[str, str]], provider: str = None)
     try:
         client, model, temperature, max_tokens, provider_name = get_llm_client(provider)
         
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature
+        }
+        # Only set max_tokens if positive integer, allowing local LLMs to generate full responses without truncation if max_tokens is <= 0 or None
+        if max_tokens and max_tokens > 0:
+            kwargs["max_tokens"] = max_tokens
+
+        response = client.chat.completions.create(**kwargs)
         
         if response.choices and len(response.choices) > 0:
             return response.choices[0].message.content or ""
