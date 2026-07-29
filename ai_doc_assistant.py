@@ -33,7 +33,8 @@ Instructions & Strict Rules:
    - Write clear explanatory prose and bullet points before presenting code snippets or tables.
 
 2. **CONVERSATION & TRANSCRIPT SYNTHESIS**:
-   - If the input contains raw team chat logs (Teams/Slack), synthesize all requests into a clean, professional Markdown Table: `| Requester | Request / Issue | Impacted Resource | Status | Resolution & Architectural Summary |`.
+   - If the input contains team chat logs WITH identified participants/senders: Synthesize all requests into a clean Markdown Table: `| Requester | Request / Issue | Impacted Resource | Status | Resolution & Architectural Summary |`.
+   - CRITICAL: If the conversation does NOT identify explicit participants/senders (anonymous or unlabeled dialogue): Do NOT output a table with blank or 'Unknown' senders. Instead, author a concise **Brief Conversation Summary** with bullet points summarizing the core issues, questions, and resolutions discussed in that specific conversation.
 
 3. **COLOR-CODED GIT DIFF & SCRIPT CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
@@ -162,6 +163,7 @@ Audit Checklist:
 2. **CONTENT COHERENCE & SYNTAX**:
    - Clean up any unclosed code blocks or broken Markdown tables.
    - Ensure all code diffs retain `+` and `-` markers inside ```diff ``` blocks.
+   - If a conversation section lacks identified participants/senders, verify it is presented as a **Brief Conversation Summary** with bullet points rather than a table with empty or 'Unknown' sender columns.
 3. **STRICT CLEANLINESS**:
    - Remove any conversational meta-filler (e.g., "Here is the document...", "Sure, I can help...", "en el pull request que está...").
    - Eliminate redundant prompt instructions left in the content.
@@ -519,21 +521,38 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
 
     section_counter = 1
 
-    # 1. Chat Summary Table
+    # 1. Chat Summary Table vs Anonymous Conversation Summary
     if chat_rows:
-        table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
-        for sender, msg in chat_rows:
-            if msg:
-                clean_msg = msg.replace('|', '\\|')
-                table_rows.append(f"| **{sender}** | {clean_msg} |")
-                
-        if len(table_rows) > 2:
-            sections.append({
-                "title": f"{section_counter}. Communication & Team Request Log",
-                "level": 2,
-                "content": "\n".join(table_rows)
-            })
-            section_counter += 1
+        has_identified_senders = any(
+            sender and not sender.lower().startswith('unknown') and not sender.lower().startswith('anonymous')
+            for sender, _ in chat_rows
+        )
+        if has_identified_senders:
+            table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
+            for sender, msg in chat_rows:
+                if msg:
+                    clean_msg = msg.replace('|', '\\|')
+                    table_rows.append(f"| **{sender}** | {clean_msg} |")
+                    
+            if len(table_rows) > 2:
+                sections.append({
+                    "title": f"{section_counter}. Communication & Team Request Log",
+                    "level": 2,
+                    "content": "\n".join(table_rows)
+                })
+                section_counter += 1
+        else:
+            summary_bullet_points = []
+            for sender, msg in chat_rows:
+                if msg:
+                    summary_bullet_points.append(f"- {msg}")
+            if summary_bullet_points:
+                sections.append({
+                    "title": f"{section_counter}. Resumen de Conversación",
+                    "level": 2,
+                    "content": "La conversación abarca las siguientes consultas y puntos principales:\n\n" + "\n".join(summary_bullet_points)
+                })
+                section_counter += 1
 
     # 2. PR Reference & URLs
     if pr_urls:
