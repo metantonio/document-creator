@@ -39,7 +39,9 @@ Instructions & Strict Rules:
      a) **Full Executive Discussion & Technical Breakdown**: Grouped by topic/theme covering every single question, answer, code snippet, configuration detail, and decision made during the chat.
      b) **Participant Action & Task Status Table**:
         `| Participant / Member | Assigned Task / Topic | Impacted Resource | Status (Completed / In Progress / Pending) | Full Progress & Resolution Details |`
-   - Ensure every single participant's contribution, question, and resolution is captured thoroughly without losing any detail!
+   - **STRICT TABLE CELL ALIGNMENT RULES**:
+     * Column 1 ("Participant / Member") MUST contain ONLY the verified full name of the team member (e.g. "dos Santos Henrique", "Furman J.R.", "Sharma Vemu", "Sarmiento Airene").
+     * NEVER put timestamps or dates (like "Yesterday", "7/23/2026", "Today"), URLs ("https..."), reaction text ("1 Like reaction"), or task descriptions into Column 1! If a participant is unlisted, write "Unassigned / Team".
 
 3. **COLOR-CODED GIT DIFF & SCRIPT CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
@@ -799,9 +801,8 @@ def process_document_update(
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
     
-    # If the user input is large (> 2500 chars) or contains multi-file diffs/logs,
-    # process full payload into structured sections to prevent truncation.
-    if len(payload) > 2500 or any(kw in payload for kw in ['modules/', 'projects/', 'diff --git', '+++ b/']):
+    # If the user input contains multi-file raw diff patches, process into structured code sections
+    if any(kw in payload for kw in ['modules/', 'projects/', 'diff --git', '+++ b/']):
         if progress_callback:
             progress_callback("generating", "⚙️ Paso 2/4: Sintetizando secciones y formateando parches de código...")
 

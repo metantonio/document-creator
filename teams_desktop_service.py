@@ -160,9 +160,56 @@ def capture_teams_chat_from_window(
     if not captured_text or len(captured_text.strip()) < 5:
         return False, "Could not capture text from Microsoft Teams window. Make sure Microsoft Teams is open and active on your screen.", []
 
-    lines = [line.strip() for line in captured_text.split('\n') if line.strip()]
-    ignore_nav = {'search', 'activity', 'chat', 'teams', 'calendar', 'calls', 'files', 'apps', 'help', 'settings', 'more options', 'reply', 'send'}
-    clean_lines = [l for l in lines if l.lower() not in ignore_nav]
+    formatted_transcript = clean_and_format_teams_transcript(captured_text)
+    clean_lines = [l for l in formatted_transcript.splitlines() if l.strip()]
 
-    transcript = "\n".join(clean_lines)
-    return True, transcript, clean_lines
+    return True, formatted_transcript, clean_lines
+
+
+def clean_and_format_teams_transcript(raw_text: str) -> str:
+    """Pre-cleans raw clipboard chat lines and pairs author names with message text cleanly."""
+    lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+    ignore_nav = {
+        'search', 'activity', 'chat', 'teams', 'calendar', 'calls', 'files', 'apps', 
+        'help', 'settings', 'more options', 'reply', 'send', 'url preview for google cloud platform',
+        'google cloud platform'
+    }
+    
+    filtered = []
+    for l in lines:
+        if l.lower() in ignore_nav:
+            continue
+        if re.search(r'^\d+\s+(like|heart|laugh|surprised|sad|angry|reaction)', l, re.IGNORECASE):
+            continue
+        if l == '??':
+            continue
+        filtered.append(l)
+
+    formatted = []
+    current_author = ""
+    current_time = ""
+    buf = []
+
+    author_regex = r'^([A-Z][a-zA-Z0-9\.\s\-\'\(\)]+?\s+\(Contractor\)|\b[A-Z][a-z]+\s+[A-Z][a-z]+\b)(?:\s+\.\s*)?$'
+    time_regex = r'^(Yesterday|Today|\d{1,2}/\d{1,2}/\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?|\d{1,2}:\d{2}\s*(?:AM|PM)?)$'
+
+    for line in filtered:
+        m_time = re.match(time_regex, line, re.IGNORECASE)
+        m_author = re.match(author_regex, line)
+
+        if m_time:
+            current_time = line
+        elif m_author and not line.startswith("http") and not line.startswith("Begin quote"):
+            if buf and current_author:
+                time_str = f"[{current_time}] " if current_time else ""
+                formatted.append(f"{time_str}{current_author}: {' '.join(buf)}")
+                buf = []
+            current_author = line.replace(" . ", " ").strip()
+        else:
+            buf.append(line)
+
+    if buf and current_author:
+        time_str = f"[{current_time}] " if current_time else ""
+        formatted.append(f"{time_str}{current_author}: {' '.join(buf)}")
+
+    return "\n\n".join(formatted) if formatted else "\n".join(filtered)
