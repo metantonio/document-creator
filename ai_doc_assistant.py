@@ -898,8 +898,12 @@ def generate_repo_documentation(
     provider: str = None
 ) -> Tuple[Dict[str, Any], str]:
     """
-    Analyzes local or GitHub codebase, generates structured repository wiki sections,
-    and merges/appends them into the target document (.docx, .md, .txt).
+    Multi-Pass Deep Repository Wiki Pipeline:
+    Pass 1: High-Level Purpose, System Overview & Configuration Guide
+    Pass 2: File-by-File Source Code Inventory & Functional Breakdown
+    Pass 3: CI/CD & GitHub Actions Automation Specifications (if workflows exist)
+    Pass 4: Governance Metrics (Stars, Forks, Issues, PRs, License) & Dependency Stack
+    Guaranteed Sections: Directory Tree + Visual Mermaid Flowchart Diagram
     """
     # 1. Scan repo context
     context, temp_dir = analyze_repo_source(repo_input)
@@ -928,57 +932,178 @@ def generate_repo_documentation(
         for fname, imports in context.get("import_graph", {}).items():
             import_graph_summary += f"\nFile '{fname}' imports/depends on:\n" + "\n".join(f"  - {imp}" for imp in imports) + "\n"
 
-        prompt = SYSTEM_REPO_WIKI_PROMPT.format(
-            repo_name=context["repo_name"],
-            github_metadata_json=github_meta_summary,
-            directory_tree=context["directory_tree"],
-            key_files_summary=key_files_summary or "No config files found.",
-            env_configs_summary=env_configs_summary or "No dedicated env config files found.",
-            github_actions_summary=actions_summary or "No GitHub Actions workflow files found.",
-            import_graph_summary=import_graph_summary or "No import statements parsed.",
-            code_files_summary=code_files_summary or "No source code files sampled."
-        )
+        all_generated_sections = []
 
-        # 2. Call LLM to generate repo documentation
-        llm_output = generate_chat_response(
-            messages=[
-                {"role": "system", "content": "You are a Principal Software Architect generating repository wiki documentation."},
-                {"role": "user", "content": prompt}
-            ],
-            provider=provider
-        )
+        # --- PASS 1: High-Level Purpose, Overview & Configuration Setup Guide ---
+        p1_prompt = f"""You are a Principal Software Architect. Perform a deep analysis of repository '{context["repo_name"]}'.
+Analyze its core purpose, technical domain, and configuration requirements.
 
-        generated_sections = extract_json_from_response(llm_output)
-        if not isinstance(generated_sections, list):
-            generated_sections = []
+Key Config & Readme Files:
+{key_files_summary}
 
-        # Guarantee Directory Tree Section
-        has_struct = any("directory" in s.get("title", "").lower() or "structure" in s.get("title", "").lower() for s in generated_sections)
-        if not has_struct and context.get("directory_tree"):
-            generated_sections.insert(1, {
+Environment Variables & Config Specs:
+{env_configs_summary}
+
+Generate 2 detailed sections in 100% English:
+1. "Repository Purpose, System Overview & Core Capabilities" (Level 1)
+2. "Configuration Files & Environment Variables Setup Guide" (Level 2) - Detail all config files (.env, config.py, settings.json, package.json), required environment variables, default values, and setup instructions.
+
+Return JSON array:
+[
+  {{"title": "Repository Purpose, System Overview & Core Capabilities", "level": 1, "content": "..."}},
+  {{"title": "Configuration Files & Environment Variables Setup Guide", "level": 2, "content": "..."}}
+]
+Only return valid JSON inside a ```json ``` block."""
+
+        try:
+            p1_out = generate_chat_response(
+                messages=[
+                    {"role": "system", "content": "You are a Senior Technical Writer performing repository architecture analysis."},
+                    {"role": "user", "content": p1_prompt}
+                ],
+                provider=provider
+            )
+            p1_secs = extract_json_from_response(p1_out)
+            if isinstance(p1_secs, list):
+                all_generated_sections.extend(p1_secs)
+        except Exception as e1:
+            print(f"Pass 1 error: {e1}")
+
+        # --- PASS 2: File-by-File Source Code Inventory & Functional Breakdown ---
+        p2_prompt = f"""You are a Lead Software Author. Perform a comprehensive, file-by-file source code inventory of repository '{context["repo_name"]}'.
+
+Directory Structure:
+```
+{context["directory_tree"]}
+```
+
+Sample Code Files:
+{code_files_summary}
+
+Import Dependency Graph:
+{import_graph_summary}
+
+Generate 1 detailed section in 100% English:
+Title: "Comprehensive File Inventory & Source Code Analysis"
+Level: 2
+Content: Provide a thorough breakdown iterating over every significant file in the codebase. For each file, explain:
+- File Path & Primary Role
+- Key Functions, Classes, and Exports
+- How it interacts with other files in the system.
+
+Return JSON array:
+[
+  {{"title": "Comprehensive File Inventory & Source Code Analysis", "level": 2, "content": "..."}}
+]
+Only return valid JSON inside a ```json ``` block."""
+
+        try:
+            p2_out = generate_chat_response(
+                messages=[
+                    {"role": "system", "content": "You are a Lead Software Engineer analyzing source code files."},
+                    {"role": "user", "content": p2_prompt}
+                ],
+                provider=provider
+            )
+            p2_secs = extract_json_from_response(p2_out)
+            if isinstance(p2_secs, list):
+                all_generated_sections.extend(p2_secs)
+        except Exception as e2:
+            print(f"Pass 2 error: {e2}")
+
+        # --- PASS 3: CI/CD & GitHub Actions Pipeline Specifications (if workflows exist) ---
+        if context.get("github_actions"):
+            p3_prompt = f"""You are a DevSecOps Lead. Analyze the CI/CD GitHub Actions workflows for repository '{context["repo_name"]}'.
+
+GitHub Actions Workflows:
+{actions_summary}
+
+Generate 1 detailed section in 100% English:
+Title: "CI/CD & GitHub Actions Automation Specifications"
+Level: 2
+Content: Iterate over each workflow file in .github/workflows/, explaining trigger events (push, PR, schedule), job steps, automated test runners, build targets, and deployment actions.
+
+Return JSON array:
+[
+  {{"title": "CI/CD & GitHub Actions Automation Specifications", "level": 2, "content": "..."}}
+]
+Only return valid JSON inside a ```json ``` block."""
+
+            try:
+                p3_out = generate_chat_response(
+                    messages=[
+                        {"role": "system", "content": "You are a DevSecOps Engineer analyzing GitHub Actions."},
+                        {"role": "user", "content": p3_prompt}
+                    ],
+                    provider=provider
+                )
+                p3_secs = extract_json_from_response(p3_out)
+                if isinstance(p3_secs, list):
+                    all_generated_sections.extend(p3_secs)
+            except Exception as e3:
+                print(f"Pass 3 error: {e3}")
+
+        # --- PASS 4: Governance Metrics, Dependency Stack & Third-Party Services ---
+        p4_prompt = f"""You are a Governance Specialist and Software Architect. Analyze GitHub metadata and external dependencies for repository '{context["repo_name"]}'.
+
+GitHub Statistics:
+{github_meta_summary}
+
+Key Files & Manifests (package.json / requirements.txt / Cargo.toml / etc.):
+{key_files_summary}
+
+Generate 1 detailed section in 100% English:
+Title: "Governance Metrics, Dependency Stack & Third-Party Integrations"
+Level: 2
+Content:
+1. Include a clear GitHub Metrics Summary Table: | Metric | Value | (Stars, Forks, Open Issues, Open PRs, License, Primary Language, Default Branch).
+2. Detail all core frameworks, libraries, runtime requirements, and third-party API integrations used by the project.
+
+Return JSON array:
+[
+  {{"title": "Governance Metrics, Dependency Stack & Third-Party Integrations", "level": 2, "content": "..."}}
+]
+Only return valid JSON inside a ```json ``` block."""
+
+        try:
+            p4_out = generate_chat_response(
+                messages=[
+                    {"role": "system", "content": "You are a Software Architect summarizing governance metrics and dependencies."},
+                    {"role": "user", "content": p4_prompt}
+                ],
+                provider=provider
+            )
+            p4_secs = extract_json_from_response(p4_out)
+            if isinstance(p4_secs, list):
+                all_generated_sections.extend(p4_secs)
+        except Exception as e4:
+            print(f"Pass 4 error: {e4}")
+
+        # --- GUARANTEED STRUCTURAL & DIAGRAMMATIC SECTIONS ---
+        # 1. Directory Tree
+        if context.get("directory_tree"):
+            all_generated_sections.insert(1, {
                 "title": "Repository Directory Structure & File Map",
                 "level": 2,
                 "content": f"The repository filesystem hierarchy and directory tree structure is organized as follows:\n\n```\n{context['directory_tree']}\n```"
             })
 
-        # Guarantee Visual Mermaid Flowchart Diagram Section
-        has_diagram = any("mermaid" in s.get("content", "").lower() or "graph" in s.get("title", "").lower() or "relationship" in s.get("title", "").lower() for s in generated_sections)
+        # 2. Visual Mermaid Flowchart Diagram
         mermaid_diag = build_mermaid_diagram_from_context(context.get("import_graph", {}), context["repo_name"])
-        if not has_diagram and mermaid_diag:
-            generated_sections.insert(2, {
+        if mermaid_diag:
+            all_generated_sections.insert(2, {
                 "title": "Component Dependency Graph & File Relationships",
                 "level": 2,
                 "content": f"The following visual Mermaid flowchart diagram maps out how source files interact and depend on each other:\n\n{mermaid_diag}"
             })
 
-        # 3. Read target document
+        # Save to target document
         existing_doc = read_document(target_filepath)
         existing_sections = existing_doc["sections"]
 
-        if len(generated_sections) > 0:
+        if len(all_generated_sections) > 0:
             final_sections = list(existing_sections)
-            
-            for gen_sec in generated_sections:
+            for gen_sec in all_generated_sections:
                 g_title = gen_sec.get("title", "Repository Wiki Section")
                 g_level = gen_sec.get("level", 2)
                 g_content = gen_sec.get("content", "")
@@ -997,23 +1122,14 @@ def generate_repo_documentation(
                     })
             
             save_updated_sections(target_filepath, existing_doc["format"], final_sections)
-            explanation = f"Generated Repository Technical Wiki for **{context['repo_name']}** with {len(generated_sections)} sections into **{existing_doc['filename']}**."
+            explanation = f"Generated Multi-Pass Technical Wiki for **{context['repo_name']}** with {len(all_generated_sections)} sections into **{existing_doc['filename']}**."
         else:
-            # Fallback if raw text output
-            fallback_sec = {
-                "title": f"Repository Wiki: {context['repo_name']}",
-                "level": 1,
-                "content": llm_output
-            }
-            existing_sections.append(fallback_sec)
-            save_updated_sections(target_filepath, existing_doc["format"], existing_sections)
-            explanation = f"Generated Technical Wiki for repository **{context['repo_name']}** and appended to **{existing_doc['filename']}**."
+            explanation = f"Analyzed repository **{context['repo_name']}**."
 
         # Automated Audit & Self-Correction Pass
         audited_doc, audit_msg = audit_and_refine_document(target_filepath, provider=provider)
         full_explanation = f"{explanation}\n\n{audit_msg}"
         return audited_doc, full_explanation
-
     finally:
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
