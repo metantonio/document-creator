@@ -545,24 +545,24 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             for sender, _ in chat_rows
         )
         if has_identified_senders:
-            table_rows = ["| Participante / Integrante | Tarea / Solicitud Asignada | Estado Actual | Avance / Detalles de Resolución |", "| :--- | :--- | :--- | :--- |"]
+            table_rows = ["| Participant / Team Member | Assigned Task / Request | Current Status | Progress & Resolution Details |", "| :--- | :--- | :--- | :--- |"]
             for sender, msg in chat_rows:
                 if msg:
                     clean_msg = msg.replace('|', '\\|')
                     msg_lower = msg.lower()
                     
                     if any(kw in msg_lower for kw in ['done', 'completed', 'updated', 'merged', 'resuelto', 'listo', 'aplicado', 'creado', 'fixed']):
-                        status = "**Completado**"
+                        status = "**Completed**"
                     elif any(kw in msg_lower for kw in ['working', 'in progress', 'reviewing', 'pending', 'rebooting', 'probando', 'revisando', 'en proceso', 'verificando']):
-                        status = "**En Progreso**"
+                        status = "**In Progress**"
                     else:
-                        status = "**Pendiente**"
+                        status = "**Pending**"
 
-                    table_rows.append(f"| **{sender}** | {clean_msg} | {status} | Solicitud registrada en la conversación; requiere seguimiento técnico. |")
+                    table_rows.append(f"| **{sender}** | {clean_msg} | {status} | Request logged in conversation; requires technical follow-up. |")
                     
             if len(table_rows) > 2:
                 sections.append({
-                    "title": f"{section_counter}. Asignación de Tareas y Estado por Participante",
+                    "title": f"{section_counter}. Task Assignment & Status by Participant",
                     "level": 2,
                     "content": "\n".join(table_rows)
                 })
@@ -574,9 +574,9 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                     summary_bullet_points.append(f"- {msg}")
             if summary_bullet_points:
                 sections.append({
-                    "title": f"{section_counter}. Resumen de Conversación",
+                    "title": f"{section_counter}. Conversation Summary Overview",
                     "level": 2,
-                    "content": "La conversación abarca las siguientes consultas y puntos principales:\n\n" + "\n".join(summary_bullet_points)
+                    "content": "The conversation covers the following key queries and main discussion points:\n\n" + "\n".join(summary_bullet_points)
                 })
                 section_counter += 1
 
@@ -650,9 +650,9 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             if dialogue_count >= 2 and len(plain_notes) <= 30:
                 bullet_summary = "\n".join(f"- {line.strip()}" for line in plain_notes if line.strip())
                 sections.append({
-                    "title": f"{section_counter}. Resumen de Conversación",
+                    "title": f"{section_counter}. Conversation Summary Overview",
                     "level": 2,
-                    "content": "La conversación contiene las siguientes consultas y puntos clave desglosados:\n\n" + bullet_summary
+                    "content": "The conversation covers the following key queries and main discussion points:\n\n" + bullet_summary
                 })
             else:
                 sections.append({
