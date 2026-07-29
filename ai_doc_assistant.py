@@ -95,57 +95,78 @@ def clean_meta_instructions_from_content(content: str) -> str:
     return "\n".join(cleaned).strip()
 
 
-SYSTEM_REPO_WIKI_PROMPT = """You are a Principal Software Architect and Technical Writer.
-Your goal is to generate comprehensive, professional technical wiki documentation for the following codebase repository (OpenWiki / DeepWiki style).
+SYSTEM_REPO_WIKI_PROMPT = """You are a Principal Software Architect, DevSecOps Lead, and Senior Technical Writer.
+Your mission is to perform a DEEP ARCHITECTURAL & CODEBASE ANALYSIS of the target repository (OpenWiki / DeepWiki style) and author comprehensive, production-grade technical wiki documentation in 100% English.
 
-Repository Name: {repo_name}
+Repository Metadata & GitHub Statistics:
+{github_metadata_json}
 
-Directory Structure:
+Directory Structure & File Tree:
 ```
 {directory_tree}
 ```
 
-Key Config & Readme Files:
+Key Config, Manifests & Build Files:
 {key_files_summary}
 
-Sample Code Files Overview:
+Environment Variables & Configuration Specs:
+{env_configs_summary}
+
+CI/CD & GitHub Actions Workflows:
+{github_actions_summary}
+
+File Relationship & Import Dependency Graph:
+{import_graph_summary}
+
+Sample Codebase Source Files:
 {code_files_summary}
 
-Instructions:
-1. Generate structured technical documentation covering:
-   - **Repository Overview & Architecture**
-   - **Technology Stack & Dependencies**
-   - **Directory Structure & Component Map**
-   - **Key Modules & API Breakdown**
-   - **Installation, Setup & Usage Guide**
-2. Return your output strictly as a JSON array of sections:
+STRICT INSTRUCTIONS FOR WIKI GENERATION:
+1. **INDEPENDENT OF README**: Do NOT rely solely on README content. Perform an independent architectural, structural, and code-level analysis of the entire codebase.
+2. **METRICS & GOVERNANCE**: Include GitHub statistics (Stars, Forks, Open Issues, Open PRs, License, Language, Default Branch) in a clear Markdown summary table.
+3. **FILE RELATIONSHIPS & MERMAID DIAGRAMS**: Explain how files interact and depend on each other. Include a visual Mermaid flowchart diagram (```mermaid ... ```) illustrating component architecture and data flow.
+4. **ENVIRONMENT VARIABLES & CONFIGURATION**: Document all environment variables, config parameters, Docker setup, and settings files.
+5. **CI/CD & GITHUB ACTIONS**: Explain all build pipelines, test runners, GitHub Actions workflows, and automation triggers.
+6. **PRODUCE 100% ENGLISH OUTPUT**: All section titles, descriptions, diagrams, tables, and prose must be written strictly in English.
+
+Return your response strictly as a JSON array of sections:
 
 ```json
 [
   {{
-    "title": "Repository Overview & Architecture",
+    "title": "Repository Overview & Governance Metrics",
     "level": 1,
-    "content": "Detailed overview of the repository..."
+    "content": "Comprehensive overview with GitHub statistics table (Stars, Forks, Issues, License)..."
   }},
   {{
-    "title": "Technology Stack & Dependencies",
+    "title": "System Architecture & High-Level Design",
     "level": 2,
-    "content": "Explanation of libraries, frameworks, and requirements..."
+    "content": "Architectural breakdown, design patterns, and structural paradigm..."
   }},
   {{
-    "title": "Directory Structure & Component Map",
+    "title": "Component Dependency Graph & File Relationships",
     "level": 2,
-    "content": "Explanation of directory organization..."
+    "content": "Explanation of file imports and relationships accompanied by a Mermaid flowchart diagram..."
   }},
   {{
-    "title": "Key Modules & Internal API Specifications",
+    "title": "Environment Variables & Configuration Parameters",
     "level": 2,
-    "content": "Breakdown of main source files, classes, and endpoints..."
+    "content": "Detailed breakdown of configuration options, env vars, and settings..."
   }},
   {{
-    "title": "Installation & Execution Guide",
+    "title": "CI/CD & GitHub Actions Automation Specifications",
     "level": 2,
-    "content": "Step-by-step setup instructions..."
+    "content": "Explanation of GitHub Actions workflows, build pipelines, and automated test triggers..."
+  }},
+  {{
+    "title": "Technology Stack, Frameworks & Core Modules",
+    "level": 2,
+    "content": "Deep breakdown of main frameworks, libraries, source files, and endpoints..."
+  }},
+  {{
+    "title": "Developer Onboarding, Setup & Deployment Guide",
+    "level": 2,
+    "content": "Step-by-step instructions for local execution, testing, and deployment..."
   }}
 ]
 ```
@@ -849,17 +870,35 @@ def generate_repo_documentation(
     try:
         # Prepare summaries for LLM prompt
         key_files_summary = ""
-        for fname, content in context["key_files"].items():
+        for fname, content in context.get("key_files", {}).items():
             key_files_summary += f"\n--- File: {fname} ---\n{content[:2000]}\n"
             
         code_files_summary = ""
-        for fname, content in context["sampled_code_files"].items():
+        for fname, content in context.get("sampled_code_files", {}).items():
             code_files_summary += f"\n--- File: {fname} ---\n{content[:1500]}\n"
+
+        github_meta_summary = json.dumps(context.get("github_metadata", {}), indent=2)
+        
+        env_configs_summary = ""
+        for fname, content in context.get("env_configs", {}).items():
+            env_configs_summary += f"\n--- Config File: {fname} ---\n{content[:2000]}\n"
+            
+        actions_summary = ""
+        for fname, content in context.get("github_actions", {}).items():
+            actions_summary += f"\n--- Workflow File: .github/workflows/{fname} ---\n{content[:2000]}\n"
+
+        import_graph_summary = ""
+        for fname, imports in context.get("import_graph", {}).items():
+            import_graph_summary += f"\nFile '{fname}' imports/depends on:\n" + "\n".join(f"  - {imp}" for imp in imports) + "\n"
 
         prompt = SYSTEM_REPO_WIKI_PROMPT.format(
             repo_name=context["repo_name"],
+            github_metadata_json=github_meta_summary,
             directory_tree=context["directory_tree"],
             key_files_summary=key_files_summary or "No config files found.",
+            env_configs_summary=env_configs_summary or "No dedicated env config files found.",
+            github_actions_summary=actions_summary or "No GitHub Actions workflow files found.",
+            import_graph_summary=import_graph_summary or "No import statements parsed.",
             code_files_summary=code_files_summary or "No source code files sampled."
         )
 
