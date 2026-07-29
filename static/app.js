@@ -1074,7 +1074,7 @@ async function captureTeamsDesktopChat() {
     if (delaySecs > 0) {
         for (let i = delaySecs; i > 0; i--) {
             if (loadingText) {
-                loadingText.innerHTML = `<span style="font-size: 1.05rem; color: #818cf8;">⏳ <strong>CAMBIA A LA VENTANA DE TEAMS AHORA!</strong></span><br>Capturando chat en <strong>${i}</strong> segundos...`;
+                loadingText.innerHTML = `<span style="font-size: 1.05rem; color: #818cf8;">⏳ <strong>SWITCH TO TEAMS WINDOW NOW!!!</strong></span><br>Capturing chat in <strong>${i}</strong> seconds...`;
             }
             await new Promise(r => setTimeout(r, 1000));
         }
