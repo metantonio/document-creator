@@ -422,9 +422,33 @@
             </div>
             <div class="modal-body">
                 <div class="config-tabs">
-                    <button class="cfg-tab-btn active" id="teamsTabDesktop" onclick="switchTeamsTab('desktop')"><i class="fa-solid fa-desktop"></i> Desktop Capture (No API)</button>
+                    <button class="cfg-tab-btn active" id="teamsTabDesktop" onclick="switchTeamsTab('desktop')"><i class="fa-solid fa-desktop"></i> Desktop App</button>
+                    <button class="cfg-tab-btn" id="teamsTabWeb" onclick="switchTeamsTab('web')"><i class="fa-brands fa-chrome"></i> Teams Web (Browser)</button>
                     <button class="cfg-tab-btn" id="teamsTabImport" onclick="switchTeamsTab('import')"><i class="fa-solid fa-cloud-arrow-down"></i> Graph API Import</button>
                     <button class="cfg-tab-btn" id="teamsTabConfig" onclick="switchTeamsTab('config')"><i class="fa-solid fa-key"></i> Azure AD Config</button>
+                </div>
+
+                <!-- TEAMS WEB PANE -->
+                <div class="config-pane" id="teamsPaneWeb" style="display: none;">
+                    <p class="cfg-desc"><i class="fa-brands fa-chrome"></i> Extract conversations directly from Microsoft Teams Web (<code>teams.microsoft.com</code>) open in your browser (Chrome, Edge, Firefox).</p>
+
+                    <div class="alert-info" style="margin-bottom: 14px; font-size: 0.88rem; padding: 12px; background: rgba(99, 102, 241, 0.08); border-left: 4px solid var(--accent-primary); border-radius: 6px;">
+                        <strong><i class="fa-solid fa-bolt"></i> Option 1: 1-Click JS Extractor Snippet</strong>
+                        <p style="margin-top: 4px; margin-bottom: 8px;">Copy the code below, open DevTools in Teams Web (<strong>F12 &rarr; Console</strong>), paste it and press Enter. It will copy all formatted chat messages to your clipboard automatically!</p>
+
+                        <div style="position: relative;">
+                            <textarea id="teamsWebJsSnippet" class="form-control" rows="3" readonly style="font-family: monospace; font-size: 11px; background: rgba(0,0,0,0.2); cursor: text;">(function(){ const selector = '[data-tid="chat-item"], .fui-ChatMessage, [role="listitem"], [data-tid="message-body"], .ui-chat__item'; const items = Array.from(document.querySelectorAll(selector)); const parsed = items.map(el => { const author = el.querySelector('[data-tid="thread-author"], .fui-ChatMessage__author, [data-tid="message-author"]')?.innerText || ''; const time = el.querySelector('time, [data-tid="message-time"]')?.innerText || ''; const body = (el.querySelector('[data-tid="message-body"], .fui-ChatMessage__body') || el).innerText; return author ? `[${time}] ${author}: ${body}` : body; }).filter(t => t && t.trim().length > 2); const unique = [...new Set(parsed)]; const text = unique.join('\n\n'); copy(text); alert('✅ Copied ' + unique.length + ' full chat messages from Teams Web to clipboard!'); })();</textarea>
+                            <div style="margin-top: 6px; display: flex; align-items: center; gap: 10px;">
+                                <button class="btn btn-secondary btn-sm" onclick="copyTeamsWebSnippet()"><i class="fa-regular fa-copy"></i> Copy JS Snippet</button>
+                                <span id="teamsWebCopyStatus" style="font-size: 12px; color: var(--accent-success);"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert-info" style="font-size: 0.88rem; padding: 12px; background: rgba(16, 185, 129, 0.08); border-left: 4px solid var(--accent-success); border-radius: 6px;">
+                        <strong><i class="fa-solid fa-desktop"></i> Option 2: 5-Second Countdown Live Capture</strong>
+                        <p style="margin-top: 4px; margin-bottom: 0;">Select your browser tab running Teams Web during the countdown, and DocCraft will automatically capture the chat and update your document.</p>
+                    </div>
                 </div>
 
                 <!-- DESKTOP CAPTURE PANE -->
@@ -466,11 +490,6 @@
                             <option value="max">📜 Maximum History (~200+ previous messages)</option>
                             <option value="top">🔝 Jump to Beginning of Chat (Ctrl+Home)</option>
                         </select>
-                    </div>
-
-                    <div id="teamsDesktopLoading" style="display: none; text-align: center; padding: 12px;">
-                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: var(--accent-primary);"></i>
-                        <p style="margin-top: 6px; font-weight: 500;" id="teamsDesktopLoadingText">Capturing Teams desktop window...</p>
                     </div>
 
                     <div class="alert-info" style="margin-top: 12px; font-size: 0.85rem; padding: 10px; background: rgba(99, 102, 241, 0.1); border-left: 3px solid var(--accent-primary); border-radius: 4px;">
@@ -556,6 +575,11 @@
                         </button>
                         <span id="teamsConnectionStatus" style="align-self: center; font-size: 13px;"></span>
                     </div>
+                </div>
+
+                <div id="teamsDesktopLoading" style="display: none; text-align: center; margin-top: 14px; padding: 14px; background: rgba(99, 102, 241, 0.12); border: 1px solid var(--accent-primary); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2);">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 28px; color: var(--accent-primary);"></i>
+                    <p style="margin-top: 8px; margin-bottom: 0; font-weight: 600; font-size: 1.05rem;" id="teamsDesktopLoadingText">Capturing Teams window...</p>
                 </div>
             </div>
 

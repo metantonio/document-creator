@@ -85,6 +85,9 @@ def get_system_clipboard_text() -> str:
         print(f"Error fetching clipboard: {e}")
         return ""
 
+VK_TAB = 0x09
+VK_SHIFT = 0x10
+
 def capture_teams_chat_from_window(
     window_title: Optional[str] = None,
     delay_seconds: int = 0,
@@ -96,8 +99,9 @@ def capture_teams_chat_from_window(
     1. Pauses for delay_seconds if specified to give user time to switch to Teams.
     2. Brings Teams window to foreground (if found).
     3. Triggers hardware Auto-Scroll UP (PageUp / Ctrl+Home) to dynamically load earlier message history.
-    4. Triggers hardware Ctrl+A and Ctrl+C keystrokes.
-    5. Reads text from system clipboard and parses chat messages.
+    4. Shifts focus from input boxes to chat thread container.
+    5. Triggers hardware Ctrl+A and Ctrl+C keystrokes.
+    6. Reads text from system clipboard and parses chat messages.
     """
     if delay_seconds > 0:
         time.sleep(delay_seconds)
@@ -109,7 +113,13 @@ def capture_teams_chat_from_window(
         user32.SetForegroundWindow(hwnd)
         time.sleep(0.3)
 
-    # 2. Auto-Scroll UP to load earlier conversation history
+    # 2. Shift focus away from text input boxes into chat list container
+    press_combo(VK_SHIFT, VK_TAB)
+    time.sleep(0.08)
+    press_combo(VK_SHIFT, VK_TAB)
+    time.sleep(0.08)
+
+    # 3. Auto-Scroll UP to load earlier conversation history
     if auto_scroll_up:
         depth = scroll_depth.lower() if scroll_depth else "standard"
         if depth == "top":
@@ -127,16 +137,26 @@ def capture_teams_chat_from_window(
                 time.sleep(0.06)
             time.sleep(0.3)
 
-    # 3. Hardware Keystrokes for Ctrl+A & Ctrl+C
+    # 4. Hardware Keystrokes for Ctrl+A & Ctrl+C
     time.sleep(0.15)
     press_combo(VK_CONTROL, VK_A)
     time.sleep(0.15)
     press_combo(VK_CONTROL, VK_C)
     time.sleep(0.25)
 
-    # 4. Extract Clipboard Text
+    # 5. Extract Clipboard Text
     captured_text = get_system_clipboard_text()
     
+    # Retry with PageUp focus if only a single element was captured
+    if captured_text and len(captured_text.strip().split('\n')) <= 2:
+        press_key(VK_PRIOR)
+        time.sleep(0.15)
+        press_combo(VK_CONTROL, VK_A)
+        time.sleep(0.15)
+        press_combo(VK_CONTROL, VK_C)
+        time.sleep(0.25)
+        captured_text = get_system_clipboard_text()
+
     if not captured_text or len(captured_text.strip()) < 5:
         return False, "Could not capture text from Microsoft Teams window. Make sure Microsoft Teams is open and active on your screen.", []
 

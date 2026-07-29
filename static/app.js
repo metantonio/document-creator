@@ -995,32 +995,57 @@ function switchTeamsTab(tab) {
     document.querySelectorAll('#teamsModal .cfg-tab-btn').forEach(btn => btn.classList.remove('active'));
 
     const tabDesktop = document.getElementById('teamsTabDesktop');
+    const tabWeb = document.getElementById('teamsTabWeb');
     const tabImport = document.getElementById('teamsTabImport');
     const tabConfig = document.getElementById('teamsTabConfig');
 
     const paneDesktop = document.getElementById('teamsPaneDesktop');
+    const paneWeb = document.getElementById('teamsPaneWeb');
     const paneImport = document.getElementById('teamsPaneImport');
     const paneConfig = document.getElementById('teamsPaneConfig');
 
     if (tab === 'desktop') {
         if (tabDesktop) tabDesktop.classList.add('active');
         if (paneDesktop) paneDesktop.style.display = 'block';
+        if (paneWeb) paneWeb.style.display = 'none';
         if (paneImport) paneImport.style.display = 'none';
         if (paneConfig) paneConfig.style.display = 'none';
         document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-desktop"></i> Capture & Add to Document';
         scanTeamsDesktopWindows();
+    } else if (tab === 'web') {
+        if (tabWeb) tabWeb.classList.add('active');
+        if (paneDesktop) paneDesktop.style.display = 'none';
+        if (paneWeb) paneWeb.style.display = 'block';
+        if (paneImport) paneImport.style.display = 'none';
+        if (paneConfig) paneConfig.style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-desktop"></i> Start 5s Countdown & Capture Browser Tab';
     } else if (tab === 'import') {
         if (tabImport) tabImport.classList.add('active');
         if (paneDesktop) paneDesktop.style.display = 'none';
+        if (paneWeb) paneWeb.style.display = 'none';
         if (paneImport) paneImport.style.display = 'block';
         if (paneConfig) paneConfig.style.display = 'none';
         document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Fetch Graph API Messages';
     } else {
         if (tabConfig) tabConfig.classList.add('active');
         if (paneDesktop) paneDesktop.style.display = 'none';
+        if (paneWeb) paneWeb.style.display = 'none';
         if (paneImport) paneImport.style.display = 'none';
         if (paneConfig) paneConfig.style.display = 'block';
         document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Azure Config';
+    }
+}
+
+function copyTeamsWebSnippet() {
+    const txt = document.getElementById('teamsWebJsSnippet');
+    const status = document.getElementById('teamsWebCopyStatus');
+    if (txt) {
+        txt.select();
+        navigator.clipboard.writeText(txt.value);
+        if (status) {
+            status.innerText = '✅ Snippet copied! Paste in F12 -> Console in Teams Web.';
+            setTimeout(() => { status.innerText = ''; }, 4000);
+        }
     }
 }
 
@@ -1074,14 +1099,20 @@ async function captureTeamsDesktopChat() {
     if (delaySecs > 0) {
         for (let i = delaySecs; i > 0; i--) {
             if (loadingText) {
-                loadingText.innerHTML = `<span style="font-size: 1.05rem; color: #818cf8;">⏳ <strong>SWITCH TO TEAMS WINDOW NOW!!!</strong></span><br>Capturing chat in <strong>${i}</strong> seconds...`;
+                loadingText.innerHTML = `<span style="font-size: 1.1rem; color: #818cf8;">⏳ <strong>SWITCH TO TEAMS WINDOW NOW!</strong></span><br>Capturing chat in <strong style="font-size: 1.3rem; color: #38bdf8;">${i}</strong> seconds...`;
+            }
+            if (submitBtn) {
+                submitBtn.innerHTML = `<i class="fa-solid fa-clock"></i> Switch Window! Capturing in ${i}s...`;
             }
             await new Promise(r => setTimeout(r, 1000));
         }
     }
 
     if (loadingText) {
-        loadingText.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Capturing Teams Conversation and generating document...`;
+        loadingText.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Capturing Teams chat & generating document...`;
+    }
+    if (submitBtn) {
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing Chat with AI...`;
     }
 
     const scrollCheckbox = document.getElementById('teamsDesktopAutoScroll');
@@ -1115,7 +1146,10 @@ async function captureTeamsDesktopChat() {
         alert(`Capture Error: ${e.message}`);
     } finally {
         if (loadingDiv) loadingDiv.style.display = 'none';
-        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<i class="fa-solid fa-desktop"></i> Capture & Add to Document`;
+        }
     }
 }
 
@@ -1153,9 +1187,10 @@ async function testTeamsConnection() {
 
 async function submitTeamsAction() {
     const paneDesktop = document.getElementById('teamsPaneDesktop');
+    const paneWeb = document.getElementById('teamsPaneWeb');
     const paneImport = document.getElementById('teamsPaneImport');
 
-    if (paneDesktop && paneDesktop.style.display !== 'none') {
+    if ((paneDesktop && paneDesktop.style.display !== 'none') || (paneWeb && paneWeb.style.display !== 'none')) {
         return captureTeamsDesktopChat();
     }
 
