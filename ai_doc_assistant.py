@@ -472,7 +472,11 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     pr_urls = []
 
     file_pat = re.compile(r'((?:modules|projects|[a-zA-Z0-9_\-\.\/]+)\/(?:[a-zA-Z0-9_\-\.]+\.)+(?:sh|tf|py|bat|cmd|json|yaml|yml|md|txt|c|cpp|h|java|go|js|ts))\b', re.IGNORECASE)
-    sender_pat = re.compile(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35}\s+\((?:Contractor|Employee|User|Admin|Dev|QA)\))\s*[:\-\—]?\s*(.*)$', re.IGNORECASE)
+    teams_sender_patterns = [
+        re.compile(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,40}(?:\s+\([^\)]+\))?)\s+(?:\[?\d{1,2}:\d{2}(?:\:\d{2})?\s*(?:AM|PM)?\]?|\d{1,2}/\d{1,2}/\d{2,4})\s*[:\-\—]?\s*(.*)$', re.IGNORECASE),
+        re.compile(r'^\[?\d{1,2}:\d{2}(?:\:\d{2})?\s*(?:AM|PM)?\]?\s*([A-Z][A-Za-z0-9\s_\-\.]{2,40}(?:\s+\([^\)]+\))?)\s*:\s*(.*)$', re.IGNORECASE),
+        re.compile(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,40}(?:\s+\((?:Contractor|Employee|User|Admin|Dev|QA|Guest|External|[^\)]+)\))?)\s*:\s*(.*)$', re.IGNORECASE)
+    ]
 
     for line in lines:
         stripped = line.strip()
@@ -507,7 +511,13 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             current_file_lines.append(line)
             continue
 
-        chat_match = sender_pat.match(stripped)
+        chat_match = None
+        for pat in teams_sender_patterns:
+            m = pat.match(stripped)
+            if m:
+                chat_match = m
+                break
+
         if chat_match:
             sender = chat_match.group(1).strip()
             message_text = chat_match.group(2).strip()
