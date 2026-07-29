@@ -35,8 +35,9 @@ Instructions & Strict Rules:
 2. **CONVERSATION & TRANSCRIPT SYNTHESIS**:
    - If the input contains raw team chat logs (Teams/Slack), synthesize all requests into a clean, professional Markdown Table: `| Requester | Request / Issue | Impacted Resource | Status | Resolution & Architectural Summary |`.
 
-3. **COLOR-CODED GIT DIFF CODE BLOCKS**:
+3. **COLOR-CODED GIT DIFF & SCRIPT CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
+   - If the user input contains a standalone script (Batch .bat, Bash .sh, Python .py, SQL, Terraform) or code snippet: You MUST preserve the full script or key code snippets inside fenced code blocks (```bat, ```bash, ```python, etc.), accompanied by a clear step-by-step architectural breakdown of what the script accomplishes.
 
 4. **CRITICAL PROHIBITION (NEVER ECHO PROMPT INSTRUCTIONS)**:
    - NEVER output prompt instructions (such as "I want to create a guide...", "en el pull request que está...", "explícalos...") inside `updated_section_content`.
@@ -343,6 +344,24 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
                 else:
                     general_lines.append(stripped)
 
+    # Separate standalone script code lines from plain notes
+    script_lines = []
+    plain_notes = []
+    
+    script_markers = [
+        '@echo off', 'setlocal', 'set "', 'goto ', 'echo [', 'if exist ', 'title ', 
+        'call "%gcloud%"', 'endlocal', 'exit /b', 'cls', '#!/bin/bash', 'def ', 
+        'import ', 'resource "', 'select ', 'from ', 'where ', 'var ', 'const ', 'function ',
+        'timeout /t', 'set /p', 'start "gcp'
+    ]
+    
+    for line in general_lines:
+        s_lower = line.strip().lower()
+        if any(marker in s_lower for marker in script_markers) or s_lower.startswith('::') or s_lower.startswith(':') or s_lower.startswith('echo.'):
+            script_lines.append(line)
+        else:
+            plain_notes.append(line)
+
     section_counter = 1
 
     # 1. Chat Summary Table
@@ -371,12 +390,25 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
         })
         section_counter += 1
 
-    # 3. Technical Notes & Details
-    if general_lines:
+    # 3. Standalone Script Implementation Section
+    if script_lines:
+        script_code_block = (
+            "The following script was provided for automated environment execution:\n\n"
+            "```bat\n" + "\n".join(script_lines[:300]) + "\n```"
+        )
+        sections.append({
+            "title": f"{section_counter}. Automation Script Implementation",
+            "level": 2,
+            "content": script_code_block
+        })
+        section_counter += 1
+
+    # 4. Technical Notes & Details
+    if plain_notes:
         sections.append({
             "title": f"{section_counter}. Technical Notes & Overview",
             "level": 2,
-            "content": "\n\n".join(general_lines)
+            "content": "\n\n".join(plain_notes)
         })
         section_counter += 1
 
