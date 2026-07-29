@@ -619,11 +619,21 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             section_counter += 1
 
         if plain_notes:
-            sections.append({
-                "title": f"{section_counter}. Technical Notes & Overview",
-                "level": 2,
-                "content": "\n\n".join(plain_notes)
-            })
+            dialogue_count = sum(1 for line in plain_notes if '?' in line or any(kw in line.lower() for kw in ['reboot', 'login', 'logout', 'issue', 'tried', 'update', 'version', 'context', 'call', 'machine', 'bucket', 'sql', 'pending', 'working', 'check', 'please']))
+            
+            if dialogue_count >= 2 and len(plain_notes) <= 30:
+                bullet_summary = "\n".join(f"- {line.strip()}" for line in plain_notes if line.strip())
+                sections.append({
+                    "title": f"{section_counter}. Resumen de Conversación",
+                    "level": 2,
+                    "content": "La conversación contiene las siguientes consultas y puntos clave desglosados:\n\n" + bullet_summary
+                })
+            else:
+                sections.append({
+                    "title": f"{section_counter}. Technical Notes & Overview",
+                    "level": 2,
+                    "content": "\n\n".join(plain_notes)
+                })
             section_counter += 1
 
     if not sections:
