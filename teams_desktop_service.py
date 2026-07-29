@@ -120,7 +120,7 @@ def capture_teams_chat_from_window(window_title: Optional[str] = None, delay_sec
             }} else {{
                 $scrollCount = 8
                 if ("{depth_clean}" -eq "deep") {{ $scrollCount = 20 }}
-                elseif ("{depth_clean}" -eq "max") {{ $scrollCount = 40 }}
+                elseif ("{depth_clean}" -eq "max") {{ $scrollCount = 600 }}
 
                 for ($i = 0; $i -lt $scrollCount; $i++) {{
                     $win32::keybd_event(0x21, 0, 0, 0) # PageUp DOWN

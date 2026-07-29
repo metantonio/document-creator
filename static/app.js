@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await fetchConfig();
     await fetchChats();
     await fetchDocuments();
-    
+
     // Auto-select latest chat or create new
     const chats = await (await fetch('/api/chats')).json();
     if (chats.chats && chats.chats.length > 0) {
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             chatInput.style.height = 'auto';
             chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
         };
-        
+
         chatInput.addEventListener('input', resizeTextarea);
         chatInput.addEventListener('paste', () => {
             setTimeout(resizeTextarea, 10);
@@ -66,7 +66,7 @@ async function fetchConfig() {
 function updateProviderUI() {
     if (!currentConfig) return;
     const provider = currentConfig.active_provider || 'local';
-    
+
     const badge = document.getElementById('activeProviderBadge');
     const btnLocal = document.getElementById('btnProviderLocal');
     const btnCloud = document.getElementById('btnProviderCloud');
@@ -90,7 +90,7 @@ async function switchProvider(provider) {
     if (!currentConfig) return;
     currentConfig.active_provider = provider;
     updateProviderUI();
-    
+
     await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,9 +120,9 @@ function renderChatsList(chats) {
         item.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
         item.setAttribute('data-chat-id', chat.id);
         item.onclick = () => selectChat(chat.id);
-        
+
         const isGenerating = activeGeneratingTasks[chat.id];
-        const statusBadge = isGenerating ? 
+        const statusBadge = isGenerating ?
             `<span class="badge-generating" title="${escapeHtml(isGenerating.message || 'Procesando con IA...')}"><i class="fa-solid fa-circle-notch fa-spin"></i> IA</span>` : '';
 
         item.innerHTML = `
@@ -165,7 +165,7 @@ async function selectChat(chatId) {
         const itemChatId = item.getAttribute('data-chat-id');
         item.classList.toggle('active', itemChatId === chatId);
     });
-    
+
     try {
         const res = await fetch(`/api/chats/${chatId}`);
         if (!res.ok) {
@@ -173,14 +173,14 @@ async function selectChat(chatId) {
             return;
         }
         const chat = await res.json();
-        
+
         const titleEl = document.getElementById('currentChatTitle');
         if (titleEl) titleEl.innerText = chat.title || 'Conversation';
         activeDocumentPath = chat.active_doc_path;
-        
+
         updateActiveDocBadge();
         renderMessages(chat.messages || []);
-        
+
         if (activeDocumentPath) {
             loadDocumentContent(activeDocumentPath);
         } else {
@@ -218,7 +218,7 @@ async function deleteChat(chatId) {
 function updateActiveDocBadge() {
     const badge = document.getElementById('activeDocBadge');
     const nameSpan = document.getElementById('activeDocName');
-    
+
     if (badge && nameSpan) {
         if (activeDocumentPath) {
             const filename = activeDocumentPath.split(/[/\\]/).pop();
@@ -260,7 +260,7 @@ function renderMessages(messages) {
             try {
                 const row = document.createElement('div');
                 row.className = `message-row ${msg.sender}`;
-                
+
                 const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
                 let parsedText = formatMessageContent(msg.text);
 
@@ -474,7 +474,7 @@ function renderQuickDocs(docs) {
                 setChatDocument(doc.filepath);
             }
         };
-        
+
         const icon = doc.format === 'docx' ? 'fa-file-word' : doc.format === 'md' ? 'fa-file-code' : 'fa-file-lines';
 
         item.innerHTML = `
@@ -491,11 +491,11 @@ function renderQuickDocs(docs) {
 async function loadDocumentContent(filepath) {
     activeDocumentPath = filepath;
     updateActiveDocBadge();
-    
+
     try {
         const res = await fetch(`/api/documents/content?filepath=${encodeURIComponent(filepath)}`);
         currentDocData = await res.json();
-        
+
         renderViewer();
     } catch (e) {
         console.error('Error loading doc content:', e);
@@ -520,7 +520,7 @@ function renderViewer() {
         if (currentViewerTab === 'preview') {
             if (typeof marked !== 'undefined' && currentDocData.full_text) {
                 contentDiv.innerHTML = marked.parse(currentDocData.full_text);
-                
+
                 // Render visual Mermaid architecture diagrams
                 if (typeof mermaid !== 'undefined') {
                     setTimeout(() => {
@@ -582,7 +582,7 @@ function toggleViewerPanel() {
     const panel = document.getElementById('viewerPanel');
     const text = document.getElementById('toggleViewerText');
     isViewerOpen = !isViewerOpen;
-    
+
     if (panel) {
         if (isViewerOpen) {
             panel.classList.remove('hidden');
@@ -871,7 +871,7 @@ async function openRepoModal() {
     if (title) title.value = '';
     if (loading) loading.style.display = 'none';
     if (btn) btn.disabled = false;
-    
+
     // Populate existing docs select
     try {
         const res = await fetch('/api/documents');
@@ -879,7 +879,7 @@ async function openRepoModal() {
         const select = document.getElementById('repoSelectExisting');
         if (select) {
             select.innerHTML = '';
-            
+
             if (data.documents && data.documents.length > 0) {
                 data.documents.forEach(doc => {
                     const opt = document.createElement('option');
@@ -894,7 +894,7 @@ async function openRepoModal() {
     } catch (e) {
         console.error('Error fetching docs for repo modal:', e);
     }
-    
+
     toggleRepoDocFields();
     openModal('repoModal');
 }
@@ -941,7 +941,7 @@ async function submitRepoAnalysis() {
         });
 
         const data = await res.json();
-        
+
         if (res.ok) {
             closeModal('repoModal');
             await fetchDocuments();
@@ -969,21 +969,21 @@ async function openTeamsModal() {
     try {
         const res = await fetch('/api/teams/config');
         const cfg = await res.json();
-        
+
         document.getElementById('teamsTenantId').value = cfg.tenant_id || '';
         document.getElementById('teamsClientId').value = cfg.client_id || '';
         document.getElementById('teamsClientSecret').value = cfg.client_secret || '';
         document.getElementById('teamsDefaultTeamId').value = cfg.default_team_id || '';
         document.getElementById('teamsDefaultChannelId').value = cfg.default_channel_id || '';
-        
+
         document.getElementById('teamsImportTeamId').value = cfg.default_team_id || '';
         document.getElementById('teamsImportChannelId').value = cfg.default_channel_id || '';
-        
+
         document.getElementById('teamsConnectionStatus').innerText = '';
         document.getElementById('teamsSaveStatus').innerText = '';
         document.getElementById('teamsImportLoading').style.display = 'none';
         document.getElementById('btnSubmitTeamsAction').disabled = false;
-        
+
         switchTeamsTab('import');
         openModal('teamsModal');
     } catch (e) {
@@ -993,11 +993,11 @@ async function openTeamsModal() {
 
 function switchTeamsTab(tab) {
     document.querySelectorAll('#teamsModal .cfg-tab-btn').forEach(btn => btn.classList.remove('active'));
-    
+
     const tabDesktop = document.getElementById('teamsTabDesktop');
     const tabImport = document.getElementById('teamsTabImport');
     const tabConfig = document.getElementById('teamsTabConfig');
-    
+
     const paneDesktop = document.getElementById('teamsPaneDesktop');
     const paneImport = document.getElementById('teamsPaneImport');
     const paneConfig = document.getElementById('teamsPaneConfig');
@@ -1028,12 +1028,12 @@ async function scanTeamsDesktopWindows() {
     const select = document.getElementById('teamsDesktopWindowSelect');
     if (!select) return;
     select.innerHTML = '<option value="">Scanning desktop for open Teams windows...</option>';
-    
+
     try {
         const res = await fetch('/api/teams/desktop/windows');
         const data = await res.json();
         const windows = data.windows || [];
-        
+
         select.innerHTML = '<option value="">Auto-detect active Teams window</option>';
         if (windows.length === 0) {
             const opt = document.createElement('option');
@@ -1058,15 +1058,15 @@ async function captureTeamsDesktopChat() {
         alert('Please select or create an active chat session first.');
         return;
     }
-    
+
     const loadingDiv = document.getElementById('teamsDesktopLoading');
     const loadingText = document.getElementById('teamsDesktopLoadingText');
     const submitBtn = document.getElementById('btnSubmitTeamsAction');
     const winSelect = document.getElementById('teamsDesktopWindowSelect');
     const delaySelect = document.getElementById('teamsDesktopDelaySelect');
-    
+
     const delaySecs = parseInt(delaySelect ? delaySelect.value : "5") || 0;
-    
+
     if (loadingDiv) loadingDiv.style.display = 'block';
     if (submitBtn) submitBtn.disabled = true;
 
@@ -1079,9 +1079,9 @@ async function captureTeamsDesktopChat() {
             await new Promise(r => setTimeout(r, 1000));
         }
     }
-    
+
     if (loadingText) {
-        loadingText.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Capturando chat de Teams y generando documento...`;
+        loadingText.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Capturing Teams Conversation and generating document...`;
     }
 
     const scrollCheckbox = document.getElementById('teamsDesktopAutoScroll');
@@ -1097,7 +1097,7 @@ async function captureTeamsDesktopChat() {
         scroll_depth: scrollDepth,
         provider: currentConfig ? currentConfig.active_provider : 'local'
     };
-    
+
     try {
         const res = await fetch('/api/teams/desktop/capture', {
             method: 'POST',
@@ -1127,13 +1127,13 @@ function toggleTeamsImportFields(type) {
 async function testTeamsConnection() {
     const statusSpan = document.getElementById('teamsConnectionStatus');
     statusSpan.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing Azure AD connection...';
-    
+
     const payload = {
         tenant_id: document.getElementById('teamsTenantId').value.trim(),
         client_id: document.getElementById('teamsClientId').value.trim(),
         client_secret: document.getElementById('teamsClientSecret').value.trim()
     };
-    
+
     try {
         const res = await fetch('/api/teams/test-connection', {
             method: 'POST',
@@ -1154,11 +1154,11 @@ async function testTeamsConnection() {
 async function submitTeamsAction() {
     const paneDesktop = document.getElementById('teamsPaneDesktop');
     const paneImport = document.getElementById('teamsPaneImport');
-    
+
     if (paneDesktop && paneDesktop.style.display !== 'none') {
         return captureTeamsDesktopChat();
     }
-    
+
     if (paneImport && paneImport.style.display === 'none') {
         // Save Azure AD config
         const payload = {
@@ -1168,7 +1168,7 @@ async function submitTeamsAction() {
             default_team_id: document.getElementById('teamsDefaultTeamId').value.trim(),
             default_channel_id: document.getElementById('teamsDefaultChannelId').value.trim()
         };
-        
+
         try {
             await fetch('/api/teams/config', {
                 method: 'POST',
@@ -1241,8 +1241,8 @@ async function submitTeamsAction() {
 function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/&/g, "&amp;")
-               .replace(/</g, "&lt;")
-               .replace(/>/g, "&gt;")
-               .replace(/"/g, "&quot;")
-               .replace(/'/g, "&#039;");
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
