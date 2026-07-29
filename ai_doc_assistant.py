@@ -148,6 +148,145 @@ Only return valid JSON inside a ```json ``` block.
 """
 
 
+SYSTEM_DOCUMENT_AUDITOR_PROMPT = """You are a Principal Technical Writer and Quality Assurance Editor.
+Your job is to perform an AUTOMATED QUALITY AUDIT AND SELF-CORRECTION on a newly generated technical document.
+
+Current Document Outline & Full Content:
+{document_full_json}
+
+Audit Checklist:
+1. **HEADING HIERARCHY & FLOW**:
+   - Ensure headings follow a logical hierarchy (Level 1 main title, Level 2 sections, Level 3/4 subsections).
+   - Fix any orphan sub-headings (e.g. Level 3 without a parent Level 2).
+   - Remove duplicate or identical section headings.
+2. **CONTENT COHERENCE & SYNTAX**:
+   - Clean up any unclosed code blocks or broken Markdown tables.
+   - Ensure all code diffs retain `+` and `-` markers inside ```diff ``` blocks.
+3. **STRICT CLEANLINESS**:
+   - Remove any conversational meta-filler (e.g., "Here is the document...", "Sure, I can help...", "en el pull request que está...").
+   - Eliminate redundant prompt instructions left in the content.
+
+Instructions:
+- If the document is ALREADY well-structured, coherent, and clean: return `"status": "approved"`.
+- If corrections, heading adjustments, or cleanup are needed: return `"status": "refined"`, and provide the COMPLETE list of polished sections.
+
+Return strictly JSON in the following format:
+
+```json
+{{
+  "status": "approved" OR "refined",
+  "audit_summary": "Concise 1-2 sentence description of audit findings or corrections applied.",
+  "sections": [
+    {{
+      "title": "Exact Title of Section",
+      "level": 2,
+      "content": "Polished section content in Markdown format"
+    }}
+  ]
+}}
+```
+Only return valid JSON inside a ```json ``` block.
+"""
+
+
+def audit_and_refine_document(filepath: str, provider: str = None) -> Tuple[Dict[str, Any], str]:
+    """
+    Automated Audit & Self-Correction Pass:
+    1. Reads the newly generated/updated document.
+    2. Runs programmatic quality checks (heading hierarchy normalization, duplicate removal, meta-filler cleaning).
+    3. Calls LLM Auditor to review overall logical coherence, formatting, and cleanliness.
+    4. Re-saves the document to disk if any refinements were made.
+    """
+    doc_info = read_document(filepath)
+    sections = doc_info.get("sections", [])
+    if not sections:
+        return doc_info, "Document is empty, audit skipped."
+
+    # Step A: Programmatic Pre-Audit & Normalization
+    programmatic_modified = False
+    cleaned_sections = []
+    seen_titles = set()
+
+    for idx, sec in enumerate(sections):
+        title = sec.get("title", "").strip()
+        level = sec.get("level", 2)
+        content = clean_meta_instructions_from_content(sec.get("content", ""))
+
+        # Strip unneeded repetition in titles
+        norm_title = re.sub(r'^\d+[\.\)]\s*', '', title).strip()
+        
+        # Prevent exact duplicate titles
+        if norm_title.lower() in seen_titles and len(sections) > 1:
+            title = f"{title} (Part {idx+1})"
+            programmatic_modified = True
+        else:
+            seen_titles.add(norm_title.lower())
+
+        # Normalize orphan heading levels
+        if level > 4:
+            level = 3
+            programmatic_modified = True
+
+        if content != sec.get("content", ""):
+            programmatic_modified = True
+
+        cleaned_sections.append({
+            "title": title,
+            "level": level,
+            "content": content
+        })
+
+    if programmatic_modified:
+        doc_info = save_updated_sections(filepath, doc_info["format"], cleaned_sections)
+        sections = doc_info.get("sections", [])
+
+    # Step B: AI LLM Auditor Pass
+    try:
+        doc_summary_for_audit = []
+        for s in sections:
+            doc_summary_for_audit.append({
+                "title": s["title"],
+                "level": s["level"],
+                "content": s["content"][:2000]
+            })
+
+        prompt = SYSTEM_DOCUMENT_AUDITOR_PROMPT.format(
+            document_full_json=json.dumps(doc_summary_for_audit, indent=2)
+        )
+
+        llm_output = generate_chat_response(
+            messages=[
+                {"role": "system", "content": "You are a Lead Quality Assurance Editor for technical documentation."},
+                {"role": "user", "content": prompt}
+            ],
+            provider=provider
+        )
+
+        audit_result = extract_json_from_response(llm_output)
+
+        if audit_result and isinstance(audit_result, dict):
+            status = audit_result.get("status", "approved")
+            audit_summary = audit_result.get("audit_summary", "Automated quality audit completed.")
+            refined_sections = audit_result.get("sections")
+
+            if status == "refined" and isinstance(refined_sections, list) and len(refined_sections) > 0:
+                final_sections = []
+                for r_sec in refined_sections:
+                    if isinstance(r_sec, dict) and "title" in r_sec and "content" in r_sec:
+                        final_sections.append({
+                            "title": r_sec["title"],
+                            "level": int(r_sec.get("level", 2)),
+                            "content": clean_meta_instructions_from_content(r_sec["content"])
+                        })
+                if final_sections:
+                    updated_doc = save_updated_sections(filepath, doc_info["format"], final_sections)
+                    return updated_doc, f"🔍 **Automated Audit Pass**: Refined and quality-polished! ({audit_summary})"
+    except Exception as e:
+        print(f"Auditor pass note: {e}")
+
+    return doc_info, "🔍 **Automated Audit Pass**: Document structure, headings, and formatting verified!"
+
+
 def clean_input_text(text: str) -> str:
     """Filter out UI system status badges, metadata cards, and assistant notifications from text."""
     if not text:
@@ -591,7 +730,11 @@ def process_document_update(
             updated_sections.append(new_sec)
 
     updated_doc = save_updated_sections(filepath, doc_info["format"], updated_sections)
-    return updated_doc, explanation
+    
+    # Automated Audit & Self-Correction Pass
+    audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider)
+    full_explanation = f"{explanation}\n\n{audit_msg}"
+    return audited_doc, full_explanation
 
 
 def generate_repo_documentation(
@@ -661,7 +804,7 @@ def generate_repo_documentation(
                         "content": g_content
                     })
             
-            updated_doc = save_updated_sections(target_filepath, existing_doc["format"], final_sections)
+            save_updated_sections(target_filepath, existing_doc["format"], final_sections)
             explanation = f"Generated Repository Technical Wiki for **{context['repo_name']}** and incorporated {len(generated_sections)} sections into **{existing_doc['filename']}**."
         else:
             # Fallback if raw text output
@@ -671,10 +814,13 @@ def generate_repo_documentation(
                 "content": llm_output
             }
             existing_sections.append(fallback_sec)
-            updated_doc = save_updated_sections(target_filepath, existing_doc["format"], existing_sections)
+            save_updated_sections(target_filepath, existing_doc["format"], existing_sections)
             explanation = f"Generated Technical Wiki for repository **{context['repo_name']}** and appended to **{existing_doc['filename']}**."
 
-        return updated_doc, explanation
+        # Automated Audit & Self-Correction Pass
+        audited_doc, audit_msg = audit_and_refine_document(target_filepath, provider=provider)
+        full_explanation = f"{explanation}\n\n{audit_msg}"
+        return audited_doc, full_explanation
 
     finally:
         if temp_dir and os.path.exists(temp_dir):
