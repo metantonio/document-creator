@@ -6,7 +6,7 @@
   "local_config": {
     "name": "Local LLM (Ollama / LM Studio / llama.cpp)",
     "base_url": "http://localhost:8080/v1",
-    "model": "llama3",
+    "model": "Bonsai-Ternary27B",
     "api_key": "ollama",
     "temperature": 0.3,
     "max_tokens": 0

@@ -631,8 +631,24 @@ def process_document_update(
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
     
-    # Format payload for LLM prompt safely bounded
-    payload_for_prompt = payload if len(payload) <= 3000 else (payload[:1800] + "\n\n...[payload truncated]...\n\n" + payload[-1200:])
+    # If the user input is large (> 2500 chars) or contains multi-file diffs/logs,
+    # process full payload into structured sections to prevent truncation.
+    if len(payload) > 2500 or any(kw in payload for kw in ['modules/', 'projects/', 'diff --git', '+++ b/']):
+        fallback_sec_list = fallback_parse_prompt_to_sections(user_input)
+        
+        # If existing document is empty or has a single placeholder, replace with full structured sections
+        if len(sections) <= 1 or (len(sections) >= 1 and any("diff --git" in s["content"] or "--- a/" in s["content"] for s in sections)):
+            sections = fallback_sec_list
+        else:
+            for f_sec in fallback_sec_list:
+                sections.append(f_sec)
+            
+        save_updated_sections(filepath, doc_info["format"], sections)
+        audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider)
+        explanation = f"Structured technical documentation generated with {len(fallback_sec_list)} sections.\n\n{audit_msg}"
+        return audited_doc, explanation
+
+    payload_for_prompt = payload
     
     llm_input_json = {
         "user_goal_instruction": instruction,
@@ -684,8 +700,10 @@ def process_document_update(
             for f_sec in fallback_sec_list:
                 sections.append(f_sec)
             
-        updated_doc = save_updated_sections(filepath, doc_info["format"], sections)
-        return updated_doc, explanation
+        save_updated_sections(filepath, doc_info["format"], sections)
+        audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider)
+        explanation = f"{explanation}\n\n{audit_msg}"
+        return audited_doc, explanation
 
     action = analysis.get("action", "add_new")
     target_heading = analysis.get("target_heading", "")
