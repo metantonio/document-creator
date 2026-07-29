@@ -466,7 +466,7 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     general_lines = []
     pr_urls = []
 
-    file_pat = re.compile(r'((?:modules|projects|[a-zA-Z0-9_\-]+)/[A-Za-z0-9_\-\./]+\.[a-z0-9]+)', re.IGNORECASE)
+    file_pat = re.compile(r'((?:modules|projects|[a-zA-Z0-9_\-\.\/]+)\/(?:[a-zA-Z0-9_\-\.]+\.)+(?:sh|tf|py|bat|cmd|json|yaml|yml|md|txt|c|cpp|h|java|go|js|ts))\b', re.IGNORECASE)
     sender_pat = re.compile(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35}\s+\((?:Contractor|Employee|User|Admin|Dev|QA)\))\s*[:\-\—]?\s*(.*)$', re.IGNORECASE)
 
     for line in lines:

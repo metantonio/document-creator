@@ -112,9 +112,9 @@ def parse_docx(filepath: str) -> List[Dict[str, Any]]:
             is_code_line = (style_name in ['No Spacing', 'Macro Text', 'CodeBlock'] or (p.runs and p.runs[0].font.name in ['Consolas', 'Courier', 'Courier New']))
             
             is_md_heading = None
-            if not is_code_line and text.startswith('#'):
-                m_h = re.match(r'^(#{1,6})\s+([A-Za-z0-9][^\-\=\#].*)$', text)
-                if m_h and not m_h.group(2).strip().startswith('--'):
+            if not is_code_line and text.startswith('#') and len(text) < 90:
+                m_h = re.match(r'^(#{1,6})\s+([A-Z0-9][^\-\=\#\.\(\)\/].*)$', text)
+                if m_h and not m_h.group(2).strip().startswith('--') and not any(kw in text.lower() for kw in ['mirror', 'gcs', 'install', 'vfw', 'tarball', 'opt', 'etc', 'usr', 'bin']):
                     is_md_heading = m_h
 
             is_bold_title = (not is_code_line and len(text) < 80 and p.runs and all(r.bold for r in p.runs) and not text.endswith('.') and not text.startswith('-') and not text.startswith('#'))
