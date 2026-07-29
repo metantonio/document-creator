@@ -13,6 +13,7 @@ from config import load_config, save_config
 import doc_service
 import chat_manager
 import teams_service
+import teams_desktop_service
 from ai_doc_assistant import process_document_update, generate_repo_documentation, ONBOARDING_GREETING
 
 app = FastAPI(title="Technical Documentation Creator")
@@ -39,6 +40,14 @@ class TeamsImportRequest(BaseModel):
     channel_id: Optional[str] = ""
     teams_chat_id: Optional[str] = ""
     limit: int = 20
+    provider: Optional[str] = None
+
+class TeamsDesktopCaptureRequest(BaseModel):
+    chat_id: str
+    window_title: Optional[str] = None
+    delay_seconds: int = 5
+    auto_scroll_up: bool = True
+    scroll_depth: str = "standard"
     provider: Optional[str] = None
 
 class CreateChatRequest(BaseModel):
@@ -543,6 +552,59 @@ def import_teams_messages_endpoint(req: TeamsImportRequest):
             req.chat_id,
             "assistant",
             f"❌ Error updating document from Teams import: {str(e)}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/teams/desktop/windows")
+def list_teams_desktop_windows_endpoint():
+    """List open Microsoft Teams windows on Windows desktop."""
+    windows = teams_desktop_service.list_teams_desktop_windows()
+    return {"windows": windows}
+
+@app.post("/api/teams/desktop/capture")
+def capture_teams_desktop_endpoint(req: TeamsDesktopCaptureRequest):
+    """Capture chat text from open Microsoft Teams desktop window and process into active document."""
+    chat = chat_manager.get_chat(req.chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail=f"Chat '{req.chat_id}' not found.")
+
+    active_doc_path = chat.get("active_doc_path")
+    if not active_doc_path or not os.path.exists(active_doc_path):
+        raise HTTPException(status_code=400, detail="No active document set for this chat session.")
+
+    success, transcript, lines = teams_desktop_service.capture_teams_chat_from_window(
+        req.window_title, req.delay_seconds, req.auto_scroll_up, req.scroll_depth
+    )
+    if not success or not transcript.strip():
+        raise HTTPException(status_code=400, detail=transcript)
+
+    try:
+        updated_doc, explanation = process_document_update(
+            filepath=active_doc_path,
+            user_input=f"Microsoft Teams Desktop Capture:\n\n{transcript}",
+            chat_history=chat.get("messages", []),
+            provider=req.provider
+        )
+
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "user",
+            "🖥️ Captured Teams Desktop Conversation"
+        )
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "assistant",
+            f"📝 **Document Updated with Teams Desktop Capture!**\n\n{explanation}",
+            doc_update_info=updated_doc
+        )
+
+        return {"status": "success", "lines_count": len(lines), "document": updated_doc, "explanation": explanation}
+    except Exception as e:
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "assistant",
+            f"❌ Error updating document from Teams Desktop Capture: {str(e)}"
         )
         raise HTTPException(status_code=500, detail=str(e))
 

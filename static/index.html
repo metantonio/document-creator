@@ -422,12 +422,64 @@
             </div>
             <div class="modal-body">
                 <div class="config-tabs">
-                    <button class="cfg-tab-btn active" id="teamsTabImport" onclick="switchTeamsTab('import')">Import Messages</button>
-                    <button class="cfg-tab-btn" id="teamsTabConfig" onclick="switchTeamsTab('config')">Azure AD Config</button>
+                    <button class="cfg-tab-btn active" id="teamsTabDesktop" onclick="switchTeamsTab('desktop')"><i class="fa-solid fa-desktop"></i> Desktop Capture (No API)</button>
+                    <button class="cfg-tab-btn" id="teamsTabImport" onclick="switchTeamsTab('import')"><i class="fa-solid fa-cloud-arrow-down"></i> Graph API Import</button>
+                    <button class="cfg-tab-btn" id="teamsTabConfig" onclick="switchTeamsTab('config')"><i class="fa-solid fa-key"></i> Azure AD Config</button>
+                </div>
+
+                <!-- DESKTOP CAPTURE PANE -->
+                <div class="config-pane active" id="teamsPaneDesktop">
+                    <p class="cfg-desc"><i class="fa-solid fa-desktop"></i> Instantly capture text from your open Microsoft Teams desktop window without requiring Azure AD permissions or API keys.</p>
+
+                    <div class="form-group">
+                        <label>Detected Teams Windows</label>
+                        <div style="display: flex; gap: 8px;">
+                            <select id="teamsDesktopWindowSelect" class="form-control">
+                                <option value="">Auto-detect active Teams window...</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="scanTeamsDesktopWindows()" title="Refresh window list"><i class="fa-solid fa-arrows-rotate"></i> Scan</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Switch Delay (Time to click Teams window)</label>
+                        <select id="teamsDesktopDelaySelect" class="form-control">
+                            <option value="5" selected>⏱️ 5 Seconds (Recommended: gives time to switch to Teams)</option>
+                            <option value="3">⏱️ 3 Seconds</option>
+                            <option value="8">⏱️ 8 Seconds</option>
+                            <option value="0">⚡ Immediate (0 Seconds)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top: -6px; margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; font-size: 0.9rem;">
+                            <input type="checkbox" id="teamsDesktopAutoScroll" checked onchange="document.getElementById('teamsDesktopDepthGroup').style.display = this.checked ? 'block' : 'none'" style="width: 16px; height: 16px; accent-color: var(--accent-primary);">
+                            <span><i class="fa-solid fa-angles-up" style="color: var(--accent-primary);"></i> <strong>Auto-scroll UP</strong> in Teams to load earlier chat history</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group" id="teamsDesktopDepthGroup">
+                        <label>History Scroll Depth</label>
+                        <select id="teamsDesktopDepthSelect" class="form-control">
+                            <option value="standard" selected>📜 Standard History (~40 previous messages)</option>
+                            <option value="deep">📜 Deep History (~100 previous messages)</option>
+                            <option value="max">📜 Maximum History (~200+ previous messages)</option>
+                            <option value="top">🔝 Jump to Beginning of Chat (Ctrl+Home)</option>
+                        </select>
+                    </div>
+
+                    <div id="teamsDesktopLoading" style="display: none; text-align: center; padding: 12px;">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: var(--accent-primary);"></i>
+                        <p style="margin-top: 6px; font-weight: 500;" id="teamsDesktopLoadingText">Capturing Teams desktop window...</p>
+                    </div>
+
+                    <div class="alert-info" style="margin-top: 12px; font-size: 0.85rem; padding: 10px; background: rgba(99, 102, 241, 0.1); border-left: 3px solid var(--accent-primary); border-radius: 4px;">
+                        <i class="fa-solid fa-circle-info"></i> <strong>How it works:</strong> Click <strong>Start Countdown & Capture</strong>, switch to your Microsoft Teams window, and DocCraft will automatically copy the chat and update your document!
+                    </div>
                 </div>
 
                 <!-- IMPORT MESSAGES PANE -->
-                <div class="config-pane active" id="teamsPaneImport">
+                <div class="config-pane" id="teamsPaneImport" style="display: none;">
                     <p class="cfg-desc"><i class="fa-solid fa-cloud-arrow-down"></i> Import channel or chat messages from Microsoft Teams into your active document.</p>
                     
                     <div class="form-group">

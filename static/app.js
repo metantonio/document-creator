@@ -994,19 +994,128 @@ async function openTeamsModal() {
 function switchTeamsTab(tab) {
     document.querySelectorAll('#teamsModal .cfg-tab-btn').forEach(btn => btn.classList.remove('active'));
     
+    const tabDesktop = document.getElementById('teamsTabDesktop');
     const tabImport = document.getElementById('teamsTabImport');
     const tabConfig = document.getElementById('teamsTabConfig');
     
-    if (tab === 'import') {
+    const paneDesktop = document.getElementById('teamsPaneDesktop');
+    const paneImport = document.getElementById('teamsPaneImport');
+    const paneConfig = document.getElementById('teamsPaneConfig');
+
+    if (tab === 'desktop') {
+        if (tabDesktop) tabDesktop.classList.add('active');
+        if (paneDesktop) paneDesktop.style.display = 'block';
+        if (paneImport) paneImport.style.display = 'none';
+        if (paneConfig) paneConfig.style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-desktop"></i> Capture & Add to Document';
+        scanTeamsDesktopWindows();
+    } else if (tab === 'import') {
         if (tabImport) tabImport.classList.add('active');
-        document.getElementById('teamsPaneImport').style.display = 'block';
-        document.getElementById('teamsPaneConfig').style.display = 'none';
-        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Fetch & Add to Document';
+        if (paneDesktop) paneDesktop.style.display = 'none';
+        if (paneImport) paneImport.style.display = 'block';
+        if (paneConfig) paneConfig.style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Fetch Graph API Messages';
     } else {
         if (tabConfig) tabConfig.classList.add('active');
-        document.getElementById('teamsPaneImport').style.display = 'none';
-        document.getElementById('teamsPaneConfig').style.display = 'block';
+        if (paneDesktop) paneDesktop.style.display = 'none';
+        if (paneImport) paneImport.style.display = 'none';
+        if (paneConfig) paneConfig.style.display = 'block';
         document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Azure Config';
+    }
+}
+
+async function scanTeamsDesktopWindows() {
+    const select = document.getElementById('teamsDesktopWindowSelect');
+    if (!select) return;
+    select.innerHTML = '<option value="">Scanning desktop for open Teams windows...</option>';
+    
+    try {
+        const res = await fetch('/api/teams/desktop/windows');
+        const data = await res.json();
+        const windows = data.windows || [];
+        
+        select.innerHTML = '<option value="">Auto-detect active Teams window</option>';
+        if (windows.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = "";
+            opt.innerText = "No explicit Teams window title detected (Will search active window)";
+            select.appendChild(opt);
+        } else {
+            windows.forEach(w => {
+                const opt = document.createElement('option');
+                opt.value = w.title;
+                opt.innerText = `💻 ${w.title}`;
+                select.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        select.innerHTML = '<option value="">Auto-detect active Teams window</option>';
+    }
+}
+
+async function captureTeamsDesktopChat() {
+    if (!currentChatId) {
+        alert('Please select or create an active chat session first.');
+        return;
+    }
+    
+    const loadingDiv = document.getElementById('teamsDesktopLoading');
+    const loadingText = document.getElementById('teamsDesktopLoadingText');
+    const submitBtn = document.getElementById('btnSubmitTeamsAction');
+    const winSelect = document.getElementById('teamsDesktopWindowSelect');
+    const delaySelect = document.getElementById('teamsDesktopDelaySelect');
+    
+    const delaySecs = parseInt(delaySelect ? delaySelect.value : "5") || 0;
+    
+    if (loadingDiv) loadingDiv.style.display = 'block';
+    if (submitBtn) submitBtn.disabled = true;
+
+    // Interactive Countdown Loop
+    if (delaySecs > 0) {
+        for (let i = delaySecs; i > 0; i--) {
+            if (loadingText) {
+                loadingText.innerHTML = `<span style="font-size: 1.05rem; color: #818cf8;">⏳ <strong>CAMBIA A LA VENTANA DE TEAMS AHORA!</strong></span><br>Capturando chat en <strong>${i}</strong> segundos...`;
+            }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+    
+    if (loadingText) {
+        loadingText.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Capturando chat de Teams y generando documento...`;
+    }
+
+    const scrollCheckbox = document.getElementById('teamsDesktopAutoScroll');
+    const autoScrollUp = scrollCheckbox ? scrollCheckbox.checked : true;
+    const depthSelect = document.getElementById('teamsDesktopDepthSelect');
+    const scrollDepth = depthSelect ? depthSelect.value : "standard";
+
+    const payload = {
+        chat_id: currentChatId,
+        window_title: winSelect ? winSelect.value : "",
+        delay_seconds: 0,
+        auto_scroll_up: autoScrollUp,
+        scroll_depth: scrollDepth,
+        provider: currentConfig ? currentConfig.active_provider : 'local'
+    };
+    
+    try {
+        const res = await fetch('/api/teams/desktop/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert(`Teams Desktop Capture: ${data.detail || 'Could not capture Teams window.'}`);
+        } else {
+            closeModal('teamsModal');
+            await selectChat(currentChatId);
+        }
+    } catch (e) {
+        alert(`Capture Error: ${e.message}`);
+    } finally {
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
     }
 }
 
@@ -1043,9 +1152,14 @@ async function testTeamsConnection() {
 }
 
 async function submitTeamsAction() {
-    const isImportTab = document.getElementById('teamsPaneImport').style.display !== 'none';
+    const paneDesktop = document.getElementById('teamsPaneDesktop');
+    const paneImport = document.getElementById('teamsPaneImport');
     
-    if (!isImportTab) {
+    if (paneDesktop && paneDesktop.style.display !== 'none') {
+        return captureTeamsDesktopChat();
+    }
+    
+    if (paneImport && paneImport.style.display === 'none') {
         // Save Azure AD config
         const payload = {
             tenant_id: document.getElementById('teamsTenantId').value.trim(),
