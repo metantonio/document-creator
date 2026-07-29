@@ -944,6 +944,165 @@ async function submitRepoAnalysis() {
     }
 }
 
+// --- MICROSOFT TEAMS INTEGRATION UI ---
+async function openTeamsModal() {
+    try {
+        const res = await fetch('/api/teams/config');
+        const cfg = await res.json();
+        
+        document.getElementById('teamsTenantId').value = cfg.tenant_id || '';
+        document.getElementById('teamsClientId').value = cfg.client_id || '';
+        document.getElementById('teamsClientSecret').value = cfg.client_secret || '';
+        document.getElementById('teamsDefaultTeamId').value = cfg.default_team_id || '';
+        document.getElementById('teamsDefaultChannelId').value = cfg.default_channel_id || '';
+        
+        document.getElementById('teamsImportTeamId').value = cfg.default_team_id || '';
+        document.getElementById('teamsImportChannelId').value = cfg.default_channel_id || '';
+        
+        document.getElementById('teamsConnectionStatus').innerText = '';
+        document.getElementById('teamsSaveStatus').innerText = '';
+        document.getElementById('teamsImportLoading').style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').disabled = false;
+        
+        switchTeamsTab('import');
+        openModal('teamsModal');
+    } catch (e) {
+        console.error('Error opening Teams modal:', e);
+    }
+}
+
+function switchTeamsTab(tab) {
+    document.querySelectorAll('#teamsModal .cfg-tab-btn').forEach(btn => btn.classList.remove('active'));
+    
+    const tabImport = document.getElementById('teamsTabImport');
+    const tabConfig = document.getElementById('teamsTabConfig');
+    
+    if (tab === 'import') {
+        if (tabImport) tabImport.classList.add('active');
+        document.getElementById('teamsPaneImport').style.display = 'block';
+        document.getElementById('teamsPaneConfig').style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Fetch & Add to Document';
+    } else {
+        if (tabConfig) tabConfig.classList.add('active');
+        document.getElementById('teamsPaneImport').style.display = 'none';
+        document.getElementById('teamsPaneConfig').style.display = 'block';
+        document.getElementById('btnSubmitTeamsAction').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Azure Config';
+    }
+}
+
+function toggleTeamsImportFields(type) {
+    document.getElementById('teamsChannelFields').style.display = type === 'channel' ? 'block' : 'none';
+    document.getElementById('teamsChatFields').style.display = type === 'chat' ? 'block' : 'none';
+}
+
+async function testTeamsConnection() {
+    const statusSpan = document.getElementById('teamsConnectionStatus');
+    statusSpan.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing Azure AD connection...';
+    
+    const payload = {
+        tenant_id: document.getElementById('teamsTenantId').value.trim(),
+        client_id: document.getElementById('teamsClientId').value.trim(),
+        client_secret: document.getElementById('teamsClientSecret').value.trim()
+    };
+    
+    try {
+        const res = await fetch('/api/teams/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.connected) {
+            statusSpan.innerHTML = `<span style="color:var(--accent-success);"><i class="fa-solid fa-circle-check"></i> ${data.detail}</span>`;
+        } else {
+            statusSpan.innerHTML = `<span style="color:#ef4444;"><i class="fa-solid fa-circle-xmark"></i> ${data.detail}</span>`;
+        }
+    } catch (e) {
+        statusSpan.innerHTML = `<span style="color:#ef4444;"><i class="fa-solid fa-circle-xmark"></i> Connection error: ${e.message}</span>`;
+    }
+}
+
+async function submitTeamsAction() {
+    const isImportTab = document.getElementById('teamsPaneImport').style.display !== 'none';
+    
+    if (!isImportTab) {
+        // Save Azure AD config
+        const payload = {
+            tenant_id: document.getElementById('teamsTenantId').value.trim(),
+            client_id: document.getElementById('teamsClientId').value.trim(),
+            client_secret: document.getElementById('teamsClientSecret').value.trim(),
+            default_team_id: document.getElementById('teamsDefaultTeamId').value.trim(),
+            default_channel_id: document.getElementById('teamsDefaultChannelId').value.trim()
+        };
+        
+        try {
+            await fetch('/api/teams/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            document.getElementById('teamsSaveStatus').innerHTML = '<span style="color:var(--accent-success);">Saved Azure config!</span>';
+            setTimeout(() => switchTeamsTab('import'), 600);
+        } catch (e) {
+            console.error('Error saving Teams config:', e);
+        }
+        return;
+    }
+
+    // Import messages
+    if (!currentChatId) {
+        alert('Please select or start a chat session first.');
+        return;
+    }
+
+    const importType = document.querySelector('input[name="teamsImportType"]:checked').value;
+    const teamId = document.getElementById('teamsImportTeamId').value.trim();
+    const channelId = document.getElementById('teamsImportChannelId').value.trim();
+    const chatMsgId = document.getElementById('teamsImportChatId').value.trim();
+    const limit = parseInt(document.getElementById('teamsImportLimit').value) || 20;
+
+    if (importType === 'channel' && (!teamId || !channelId)) {
+        alert('Please provide Team ID and Channel ID.');
+        return;
+    }
+    if (importType === 'chat' && !chatMsgId) {
+        alert('Please provide Teams Chat ID.');
+        return;
+    }
+
+    document.getElementById('teamsImportLoading').style.display = 'block';
+    document.getElementById('btnSubmitTeamsAction').disabled = true;
+
+    try {
+        const res = await fetch('/api/teams/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: currentChatId,
+                target_type: importType,
+                team_id: teamId,
+                channel_id: channelId,
+                teams_chat_id: chatMsgId,
+                limit: limit
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            closeModal('teamsModal');
+            await selectChat(currentChatId);
+        } else {
+            alert(`Teams Import Error: ${data.detail || 'Failed to import messages'}`);
+        }
+    } catch (e) {
+        console.error('Error importing Teams messages:', e);
+        alert(`An error occurred during Teams import: ${e.message}`);
+    } finally {
+        document.getElementById('teamsImportLoading').style.display = 'none';
+        document.getElementById('btnSubmitTeamsAction').disabled = false;
+    }
+}
+
 // UTILS
 function escapeHtml(text) {
     if (!text) return '';

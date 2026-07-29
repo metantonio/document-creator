@@ -12,6 +12,7 @@ import config
 from config import load_config, save_config
 import doc_service
 import chat_manager
+import teams_service
 from ai_doc_assistant import process_document_update, generate_repo_documentation, ONBOARDING_GREETING
 
 app = FastAPI(title="Technical Documentation Creator")
@@ -22,6 +23,23 @@ class ConfigUpdateRequest(BaseModel):
     document_paths: Optional[List[str]] = None
     local_config: Optional[Dict[str, Any]] = None
     cloud_config: Optional[Dict[str, Any]] = None
+    teams_config: Optional[Dict[str, Any]] = None
+
+class TeamsConfigRequest(BaseModel):
+    tenant_id: Optional[str] = ""
+    client_id: Optional[str] = ""
+    client_secret: Optional[str] = ""
+    default_team_id: Optional[str] = ""
+    default_channel_id: Optional[str] = ""
+
+class TeamsImportRequest(BaseModel):
+    chat_id: str
+    target_type: str = "channel"  # 'channel' or 'chat'
+    team_id: Optional[str] = ""
+    channel_id: Optional[str] = ""
+    teams_chat_id: Optional[str] = ""
+    limit: int = 20
+    provider: Optional[str] = None
 
 class CreateChatRequest(BaseModel):
     title: Optional[str] = "New Conversation"
@@ -398,6 +416,135 @@ def analyze_repository(req: AnalyzeRepoRequest):
                 f"❌ Error analyzing repository: {str(e)}"
             )
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- MICROSOFT TEAMS ENDPOINTS ---
+@app.get("/api/teams/config")
+def get_teams_config_endpoint():
+    """Retrieve saved Teams configuration."""
+    cfg = load_config()
+    teams_cfg = cfg.get("teams_config", {})
+    masked_secret = "********" if teams_cfg.get("client_secret") else ""
+    return {
+        "tenant_id": teams_cfg.get("tenant_id", ""),
+        "client_id": teams_cfg.get("client_id", ""),
+        "client_secret": masked_secret,
+        "default_team_id": teams_cfg.get("default_team_id", ""),
+        "default_channel_id": teams_cfg.get("default_channel_id", "")
+    }
+
+@app.post("/api/teams/config")
+def save_teams_config_endpoint(req: TeamsConfigRequest):
+    """Save Azure AD Teams API configuration."""
+    cfg = load_config()
+    existing_teams = cfg.get("teams_config", {})
+    
+    secret_to_save = req.client_secret
+    if secret_to_save == "********":
+        secret_to_save = existing_teams.get("client_secret", "")
+
+    new_teams_cfg = {
+        "tenant_id": req.tenant_id.strip(),
+        "client_id": req.client_id.strip(),
+        "client_secret": secret_to_save.strip(),
+        "default_team_id": req.default_team_id.strip(),
+        "default_channel_id": req.default_channel_id.strip()
+    }
+    
+    save_config({"teams_config": new_teams_cfg})
+    return {"status": "success", "message": "Microsoft Teams configuration saved."}
+
+@app.post("/api/teams/test-connection")
+def test_teams_connection_endpoint(req: TeamsConfigRequest):
+    """Test Azure AD authentication credentials connection."""
+    cfg = load_config()
+    existing_teams = cfg.get("teams_config", {})
+    
+    secret = req.client_secret
+    if secret == "********":
+        secret = existing_teams.get("client_secret", "")
+
+    res = teams_service.test_teams_connection(
+        tenant_id=req.tenant_id or existing_teams.get("tenant_id", ""),
+        client_id=req.client_id or existing_teams.get("client_id", ""),
+        client_secret=secret
+    )
+    return res
+
+@app.post("/api/teams/import")
+def import_teams_messages_endpoint(req: TeamsImportRequest):
+    """Fetches Teams messages from channel or chat, formats them, and updates the active document."""
+    chat = chat_manager.get_chat(req.chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    active_doc_path = chat.get("active_doc_path")
+    if not active_doc_path or not os.path.exists(active_doc_path):
+        raise HTTPException(status_code=400, detail="Please create or select an active document first.")
+
+    cfg = load_config()
+    teams_cfg = cfg.get("teams_config", {})
+
+    tenant_id = teams_cfg.get("tenant_id")
+    client_id = teams_cfg.get("client_id")
+    client_secret = teams_cfg.get("client_secret")
+
+    if not tenant_id or not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail="Microsoft Teams Azure AD credentials are not configured. Please configure them in Settings -> Microsoft Teams.")
+
+    messages = []
+    err = None
+
+    if req.target_type == "channel":
+        team_id = req.team_id or teams_cfg.get("default_team_id")
+        channel_id = req.channel_id or teams_cfg.get("default_channel_id")
+        if not team_id or not channel_id:
+            raise HTTPException(status_code=400, detail="Team ID and Channel ID are required for channel imports.")
+        messages, err = teams_service.fetch_channel_messages(tenant_id, client_id, client_secret, team_id, channel_id, req.limit)
+    else: # chat
+        teams_chat_id = req.teams_chat_id
+        if not teams_chat_id:
+            raise HTTPException(status_code=400, detail="Teams Chat ID is required for chat imports.")
+        messages, err = teams_service.fetch_chat_messages(tenant_id, client_id, client_secret, teams_chat_id, req.limit)
+
+    if err:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch Teams messages: {err}")
+
+    if not messages:
+        return {"status": "warning", "message": "No messages found in the specified Teams channel/chat."}
+
+    # Format messages to prompt text transcript
+    formatted_prompt = teams_service.format_teams_messages_to_prompt(messages)
+
+    # Process document update with AI
+    try:
+        updated_doc, explanation = process_document_update(
+            filepath=active_doc_path,
+            user_input=formatted_prompt,
+            chat_history=chat.get("messages", []),
+            provider=req.provider
+        )
+
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "user",
+            f"💬 Imported {len(messages)} messages from Microsoft Teams"
+        )
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "assistant",
+            f"📝 **Document Updated with Teams Conversation!**\n\n{explanation}",
+            doc_update_info=updated_doc
+        )
+
+        return {"status": "success", "imported_count": len(messages), "document": updated_doc, "explanation": explanation}
+    except Exception as e:
+        chat_manager.add_chat_message(
+            req.chat_id,
+            "assistant",
+            f"❌ Error updating document from Teams import: {str(e)}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Mount static directory for frontend

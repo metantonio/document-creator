@@ -54,6 +54,9 @@
             <button class="btn btn-secondary btn-block" onclick="openRepoModal()">
                 <i class="fa-solid fa-bolt"></i> Analyze Repository Wiki
             </button>
+            <button class="btn btn-secondary btn-block" onclick="openTeamsModal()">
+                <i class="fa-brands fa-microsoft-teams" style="color: #818cf8;"></i> Import Teams Chat
+            </button>
 
             <!-- Conversations List -->
             <div class="section-title">Conversations</div>
@@ -398,11 +401,107 @@
                 </div>
             </div>
 
+    <!-- MODAL: MICROSOFT TEAMS INTEGRATION -->
+    <div class="modal-overlay" id="teamsModal">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3><i class="fa-brands fa-microsoft-teams" style="color: #818cf8;"></i> Microsoft Teams Integration</h3>
+                <button class="btn-icon" onclick="closeModal('teamsModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="config-tabs">
+                    <button class="cfg-tab-btn active" id="teamsTabImport" onclick="switchTeamsTab('import')">Import Messages</button>
+                    <button class="cfg-tab-btn" id="teamsTabConfig" onclick="switchTeamsTab('config')">Azure AD Config</button>
+                </div>
+
+                <!-- IMPORT MESSAGES PANE -->
+                <div class="config-pane active" id="teamsPaneImport">
+                    <p class="cfg-desc"><i class="fa-solid fa-cloud-arrow-down"></i> Import channel or chat messages from Microsoft Teams into your active document.</p>
+                    
+                    <div class="form-group">
+                        <label>Import Target Type</label>
+                        <div class="format-options">
+                            <label class="format-radio">
+                                <input type="radio" name="teamsImportType" value="channel" checked onclick="toggleTeamsImportFields('channel')">
+                                <span class="radio-card"><i class="fa-solid fa-users"></i> Teams Channel</span>
+                            </label>
+                            <label class="format-radio">
+                                <input type="radio" name="teamsImportType" value="chat" onclick="toggleTeamsImportFields('chat')">
+                                <span class="radio-card"><i class="fa-solid fa-comments"></i> 1:1 or Group Chat</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="teamsChannelFields">
+                        <div class="form-group">
+                            <label>Team ID</label>
+                            <input type="text" id="teamsImportTeamId" class="form-control" placeholder="19:xxxxxxxxxxxxxxxxxxxxxx@thread.tacv2 or GUID">
+                        </div>
+                        <div class="form-group">
+                            <label>Channel ID</label>
+                            <input type="text" id="teamsImportChannelId" class="form-control" placeholder="19:xxxxxxxxxxxxxxxxxxxxxx@thread.tacv2">
+                        </div>
+                    </div>
+
+                    <div id="teamsChatFields" style="display: none;">
+                        <div class="form-group">
+                            <label>Teams Chat ID</label>
+                            <input type="text" id="teamsImportChatId" class="form-control" placeholder="19:xxxxxxxxxxxxxxxxxxxxxx@thread.v2">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Message Count Limit</label>
+                        <input type="number" id="teamsImportLimit" class="form-control" value="20" min="1" max="50">
+                    </div>
+
+                    <div id="teamsImportLoading" style="display: none; text-align: center; padding: 12px;">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: var(--accent-primary);"></i>
+                        <p style="margin-top: 6px; font-weight: 500;">Fetching Teams messages and generating document sections...</p>
+                    </div>
+                </div>
+
+                <!-- AZURE AD CONFIG PANE -->
+                <div class="config-pane" id="teamsPaneConfig" style="display: none;">
+                    <p class="cfg-desc"><i class="fa-solid fa-shield-halved"></i> Enter your Azure AD / Microsoft Entra ID Application Registration credentials to authenticate Graph API.</p>
+                    
+                    <div class="form-group">
+                        <label>Tenant ID (Directory ID)</label>
+                        <input type="text" id="teamsTenantId" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                    </div>
+                    <div class="form-group">
+                        <label>Client ID (Application ID)</label>
+                        <input type="text" id="teamsClientId" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                    </div>
+                    <div class="form-group">
+                        <label>Client Secret</label>
+                        <input type="password" id="teamsClientSecret" class="form-control" placeholder="Secret value from Azure Portal">
+                    </div>
+                    <div class="form-group">
+                        <label>Default Team ID (Optional)</label>
+                        <input type="text" id="teamsDefaultTeamId" class="form-control" placeholder="Default Team ID">
+                    </div>
+                    <div class="form-group">
+                        <label>Default Channel ID (Optional)</label>
+                        <input type="text" id="teamsDefaultChannelId" class="form-control" placeholder="Default Channel ID">
+                    </div>
+
+                    <div style="margin-top: 12px; display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="testTeamsConnection()">
+                            <i class="fa-solid fa-plug-circle-check"></i> Test Connection
+                        </button>
+                        <span id="teamsConnectionStatus" style="align-self: center; font-size: 13px;"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="modal-footer flex-between">
-                <span class="text-subtle" id="configSaveStatus"></span>
+                <span class="text-subtle" id="teamsSaveStatus"></span>
                 <div>
-                    <button class="btn btn-secondary" onclick="closeModal('configModal')">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveConfiguration()">Save Changes</button>
+                    <button class="btn btn-secondary" onclick="closeModal('teamsModal')">Close</button>
+                    <button class="btn btn-primary" id="btnSubmitTeamsAction" onclick="submitTeamsAction()">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Fetch & Add to Document
+                    </button>
                 </div>
             </div>
         </div>

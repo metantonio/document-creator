@@ -25,6 +25,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "api_key": "",
         "temperature": 0.3,
         "max_tokens": 32768
+    },
+    "teams_config": {
+        "tenant_id": "",
+        "client_id": "",
+        "client_secret": "",
+        "default_team_id": "",
+        "default_channel_id": ""
     }
 }
 
