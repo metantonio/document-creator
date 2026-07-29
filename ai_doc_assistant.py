@@ -32,13 +32,14 @@ Instructions & Strict Rules:
    - For any code changes, diffs, or infrastructure updates: Explain WHY the change was made, WHAT problem it solves, and HOW the technical mechanics work (e.g. proxy TLS decryption limits, GCS mirror fallbacks, cross-region latency, IAM grants).
    - Write clear explanatory prose and bullet points before presenting code snippets or tables.
 
-2. **CONVERSATION SYNTHESIS & TASK ASSIGNMENT TABLE BY PARTICIPANT**:
-   - Do NOT dump raw chat messages or message logs verbatim.
-   - Synthesize all team conversations into a structured **Task Assignment & Progress Table by Person**:
-     `| Participant / Member | Assigned Task / Request | Impacted Resource | Current Status (Completed / In Progress / Pending) | Progress & Resolution Details |`
-   - Explicitly evaluate whether each requested task is **Completed**, **In Progress**, or **Pending** based on the conversation context.
-   - (If the document is written in Spanish or requested in Spanish, use matching Spanish column titles and statuses: **Completado**, **En Progreso**, **Pendiente**).
-   - CRITICAL: If the conversation does NOT identify explicit participants/senders (anonymous or unlabeled dialogue): Do NOT output a table with blank or 'Unknown' senders. Instead, author a concise **Brief Conversation Summary** with bullet points summarizing the core issues, questions, and resolutions.
+2. **COMPREHENSIVE CONVERSATION ANALYSIS & COMPLETE DISCUSSION BREAKDOWN**:
+   - Preserve 100% of all discussion topics, technical decisions, questions, answers, code references, and participant contributions from the Teams conversation.
+   - Do NOT drop, condense, or omit any discussion details or user messages.
+   - Structure the output into:
+     a) **Full Executive Discussion & Technical Breakdown**: Grouped by topic/theme covering every single question, answer, code snippet, configuration detail, and decision made during the chat.
+     b) **Participant Action & Task Status Table**:
+        `| Participant / Member | Assigned Task / Topic | Impacted Resource | Status (Completed / In Progress / Pending) | Full Progress & Resolution Details |`
+   - Ensure every single participant's contribution, question, and resolution is captured thoroughly without losing any detail!
 
 3. **COLOR-CODED GIT DIFF & SCRIPT CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
@@ -309,8 +310,13 @@ def audit_and_refine_document(filepath: str, provider: str = None, progress_call
                             "content": clean_meta_instructions_from_content(r_sec["content"])
                         })
                 if final_sections:
-                    updated_doc = save_updated_sections(filepath, doc_info["format"], final_sections)
-                    return updated_doc, f"🔍 **Automated Audit Pass**: Refined and quality-polished! ({audit_summary})"
+                    orig_len = sum(len(s.get("content", "")) for s in sections)
+                    new_len = sum(len(s.get("content", "")) for s in final_sections)
+                    if orig_len > 0 and new_len < orig_len * 0.8:
+                        print(f"Auditor safety guard triggered: keeping original full text (orig_len={orig_len}, refined len={new_len}).")
+                    else:
+                        updated_doc = save_updated_sections(filepath, doc_info["format"], final_sections)
+                        return updated_doc, f"🔍 **Automated Audit Pass**: Refined and quality-polished! ({audit_summary})"
     except Exception as e:
         print(f"Auditor pass note: {e}")
 
@@ -666,21 +672,23 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             section_counter += 1
 
         if plain_notes:
-            dialogue_count = sum(1 for line in plain_notes if '?' in line or any(kw in line.lower() for kw in ['reboot', 'login', 'logout', 'issue', 'tried', 'update', 'version', 'context', 'call', 'machine', 'bucket', 'sql', 'pending', 'working', 'check', 'please']))
+            is_teams = any("teams" in line.lower() or "[" in line or ":" in line for line in plain_notes[:10])
+            title_text = "Microsoft Teams Complete Conversation History & Discussion Details" if is_teams else "Technical Notes & Comprehensive Overview"
             
-            if dialogue_count >= 2 and len(plain_notes) <= 30:
-                bullet_summary = "\n".join(f"- {line.strip()}" for line in plain_notes if line.strip())
-                sections.append({
-                    "title": f"{section_counter}. Conversation Summary Overview",
-                    "level": 2,
-                    "content": "The conversation covers the following key queries and main discussion points:\n\n" + bullet_summary
-                })
-            else:
-                sections.append({
-                    "title": f"{section_counter}. Technical Notes & Overview",
-                    "level": 2,
-                    "content": "\n\n".join(plain_notes)
-                })
+            bullet_lines = []
+            for line in plain_notes:
+                s = line.strip()
+                if not s: continue
+                if s.startswith("- ") or s.startswith("* ") or re.match(r'^\d+[\.\)]', s):
+                    bullet_lines.append(s)
+                else:
+                    bullet_lines.append(f"- {s}")
+                    
+            sections.append({
+                "title": f"{section_counter}. {title_text}",
+                "level": 2,
+                "content": "The following detailed conversation points and technical discussion items were extracted from Microsoft Teams:\n\n" + "\n".join(bullet_lines)
+            })
             section_counter += 1
 
     if not sections:
