@@ -162,26 +162,30 @@ def scan_env_and_configs(root_path: str) -> Dict[str, str]:
     return env_configs
 
 def scan_file_imports_graph(root_path: str) -> Dict[str, List[str]]:
-    """Scan source files and build import dependency mapping between files."""
+    """Scan source files and build import/dependency mapping between files."""
     import_map = {}
     
     for root, dirs, files in os.walk(root_path):
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
         for f in files:
             ext = os.path.splitext(f)[1].lower()
-            if ext in ['.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', '.cs', '.rs']:
+            if ext in ['.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', '.cs', '.rs', '.html']:
                 rel_path = os.path.relpath(os.path.join(root, f), root_path)
                 full_path = os.path.join(root, f)
                 try:
                     with open(full_path, 'r', encoding='utf-8', errors='replace') as file_obj:
-                        lines = file_obj.readlines()[:100]
+                        lines = file_obj.readlines()[:150]
                         imported_modules = []
                         for line in lines:
                             line_s = line.strip()
-                            if line_s.startswith('import ') or line_s.startswith('from ') or 'require(' in line_s:
+                            if line_s.startswith('import ') or line_s.startswith('from ') or 'require(' in line_s or 'src=' in line_s:
                                 imported_modules.append(line_s)
+                            elif any(kw in line_s for kw in ['.json', '.csv', '.sql', '.backup', 'fetch(', 'fs.read']):
+                                match = re.search(r'[\'\"]([^\'\"]+\.(?:json|csv|sql|js|py|html))[\'\"]', line_s)
+                                if match:
+                                    imported_modules.append(f"references {match.group(1)}")
                         if imported_modules:
-                            import_map[rel_path] = imported_modules[:8]
+                            import_map[rel_path] = imported_modules[:10]
                 except Exception:
                     pass
     return import_map

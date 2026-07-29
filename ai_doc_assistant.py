@@ -1079,22 +1079,67 @@ Only return valid JSON inside a ```json ``` block."""
         except Exception as e4:
             print(f"Pass 4 error: {e4}")
 
-        # --- GUARANTEED STRUCTURAL & DIAGRAMMATIC SECTIONS ---
+        # --- PASS 5: Dedicated Architectural Mermaid Diagram Loop ---
+        p5_prompt = f"""You are a Principal Systems Architect. Create a dedicated visual Mermaid flowchart diagram (```mermaid ... ```) mapping out the complete file relationships and component architecture for repository '{context["repo_name"]}'.
+
+Directory Structure:
+```
+{context["directory_tree"]}
+```
+
+Import Dependency Graph:
+{import_graph_summary}
+
+Code Files & Scripts Overview:
+{code_files_summary}
+
+Generate 1 detailed section in 100% English:
+Title: "Component Dependency Graph & File Relationships"
+Level: 2
+Content: Provide a clear explanatory paragraph followed by a valid visual Mermaid flowchart diagram (```mermaid ... ``` with `graph TD`) illustrating how frontend files, backend engines, CLI scripts, tools, and data files (JSON, CSV, API endpoints) interact and connect.
+
+Return JSON array:
+[
+  {{"title": "Component Dependency Graph & File Relationships", "level": 2, "content": "..."}}
+]
+Only return valid JSON inside a ```json ``` block."""
+
+        try:
+            p5_out = generate_chat_response(
+                messages=[
+                    {"role": "system", "content": "You are a Principal Architect generating Mermaid component diagrams."},
+                    {"role": "user", "content": p5_prompt}
+                ],
+                provider=provider
+            )
+            p5_secs = extract_json_from_response(p5_out)
+            if isinstance(p5_secs, list) and len(p5_secs) > 0 and "mermaid" in p5_secs[0].get("content", "").lower():
+                all_generated_sections.insert(2, p5_secs[0])
+            else:
+                mermaid_diag = build_mermaid_diagram_from_context(context.get("import_graph", {}), context["repo_name"])
+                if mermaid_diag:
+                    all_generated_sections.insert(2, {
+                        "title": "Component Dependency Graph & File Relationships",
+                        "level": 2,
+                        "content": f"The following visual Mermaid flowchart diagram maps out how source files interact and depend on each other:\n\n{mermaid_diag}"
+                    })
+        except Exception as e5:
+            print(f"Pass 5 error: {e5}")
+            mermaid_diag = build_mermaid_diagram_from_context(context.get("import_graph", {}), context["repo_name"])
+            if mermaid_diag:
+                all_generated_sections.insert(2, {
+                    "title": "Component Dependency Graph & File Relationships",
+                    "level": 2,
+                    "content": f"The following visual Mermaid flowchart diagram maps out how source files interact and depend on each other:\n\n{mermaid_diag}"
+                })
+
+        # --- GUARANTEED STRUCTURAL SECTIONS ---
         # 1. Directory Tree
-        if context.get("directory_tree"):
+        if context.get("directory_tree") and not any("directory" in s.get("title", "").lower() for s in all_generated_sections):
             all_generated_sections.insert(1, {
                 "title": "Repository Directory Structure & File Map",
                 "level": 2,
                 "content": f"The repository filesystem hierarchy and directory tree structure is organized as follows:\n\n```\n{context['directory_tree']}\n```"
-            })
-
-        # 2. Visual Mermaid Flowchart Diagram
-        mermaid_diag = build_mermaid_diagram_from_context(context.get("import_graph", {}), context["repo_name"])
-        if mermaid_diag:
-            all_generated_sections.insert(2, {
-                "title": "Component Dependency Graph & File Relationships",
-                "level": 2,
-                "content": f"The following visual Mermaid flowchart diagram maps out how source files interact and depend on each other:\n\n{mermaid_diag}"
             })
 
         # Save to target document
