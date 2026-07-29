@@ -24,7 +24,7 @@ Current Document Outline & Sections:
 {document_structure_json}
 
 User Technical Input:
-"{user_input}"
+{user_input}
 
 Instructions & Strict Rules:
 1. **DEEP ARCHITECTURAL ANALYSIS & EXPLANATIONS**:
@@ -221,7 +221,8 @@ def separate_instruction_and_payload(raw_input: str) -> Tuple[str, str]:
 def extract_json_from_response(text: str) -> Any:
     """
     Robust JSON parser that extracts JSON blocks and handles unescaped inner double quotes
-    (common in Terraform/Bash code snippets like "chapp" = { application = "pe3" }).
+    (common in Terraform/Bash code snippets like "chapp" = { application = "pe3" }),
+    control characters, brackets, hashes, and mismatched quotes.
     """
     if not text:
         return None
@@ -230,15 +231,15 @@ def extract_json_from_response(text: str) -> Any:
     match = re.search(pattern, text)
     raw_str = match.group(1).strip() if match else text.strip()
 
-    # Attempt 1: Standard json.loads
+    # Attempt 1: Standard json.loads with strict=False
     try:
-        return json.loads(raw_str)
+        return json.loads(raw_str, strict=False)
     except Exception:
         pass
 
-    # Attempt 2: Smart repair of unescaped quotes inside updated_section_content
+    # Attempt 2: Smart repair of unescaped quotes inside updated_section_content or string values
     try:
-        def fix_content_field(m):
+        def fix_field(m):
             prefix = m.group(1)
             inner = m.group(2)
             suffix = m.group(3)
@@ -248,43 +249,60 @@ def extract_json_from_response(text: str) -> Any:
             return f'{prefix}"{inner_fixed}"{suffix}'
 
         repaired_str = re.sub(
-            r'("updated_section_content"\s*:\s*)"([\s\S]*?)"(\s*,\s*"explanation")',
-            fix_content_field,
+            r'("(?:updated_section_content|content|explanation|new_heading_title|target_heading)"\s*:\s*)"([\s\S]*?)"(\s*[\},])',
+            fix_field,
             raw_str
         )
-        return json.loads(repaired_str)
+        return json.loads(repaired_str, strict=False)
     except Exception:
         pass
 
-    # Attempt 3: Extract inner section content safely (never return raw JSON string)
+    # Attempt 3: Multi-key regex fallback (extract fields safely even if full JSON is malformed)
     try:
-        content_m = re.search(r'"updated_section_content"\s*:\s*"(.*)', raw_str, re.DOTALL)
-        if content_m:
-            tail = content_m.group(1)
-            exp_idx = tail.rfind('"explanation"')
-            if exp_idx != -1:
-                tail = tail[:exp_idx].rstrip()
-                if tail.endswith(','):
-                    tail = tail[:-1].rstrip()
-                if tail.endswith('"'):
-                    tail = tail[:-1]
-            else:
-                tail = re.sub(r'["\s\}]+$', '', tail)
-                
-            clean_content = tail.replace('\\"', '"').replace('\\n', '\n').strip()
-            
-            action_m = re.search(r'"action"\s*:\s*"([^"]+)"', raw_str)
-            target_m = re.search(r'"target_heading"\s*:\s*"([^"]*)"', raw_str)
-            title_m = re.search(r'"new_heading_title"\s*:\s*"([^"]*)"', raw_str)
-            level_m = re.search(r'"heading_level"\s*:\s*(\d+)', raw_str)
-            exp_m = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw_str)
+        if raw_str.startswith('[') and raw_str.endswith(']'):
+            items = []
+            item_blocks = re.findall(r'\{\s*"title"\s*:[\s\S]*?\}', raw_str)
+            for blk in item_blocks:
+                t_m = re.search(r'"title"\s*:\s*"([^"]*)"', blk)
+                l_m = re.search(r'"level"\s*:\s*(\d+)', blk)
+                c_m = re.search(r'"content"\s*:\s*"([\s\S]*)"', blk)
+                if t_m:
+                    items.append({
+                        "title": t_m.group(1),
+                        "level": int(l_m.group(1)) if l_m else 2,
+                        "content": c_m.group(1).replace('\\"', '"').replace('\\n', '\n') if c_m else ""
+                    })
+            if items:
+                return items
 
+        content_val = None
+        c_m = re.search(r'"updated_section_content"\s*:\s*"([\s\S]*?)"\s*,\s*"explanation"', raw_str)
+        if not c_m:
+            c_m = re.search(r'"updated_section_content"\s*:\s*"(.*)', raw_str, re.DOTALL)
+            if c_m:
+                tail = c_m.group(1)
+                exp_idx = tail.rfind('"explanation"')
+                if exp_idx != -1:
+                    tail = tail[:exp_idx].rstrip().rstrip(',').rstrip('"')
+                else:
+                    tail = re.sub(r'["\s\}]+$', '', tail)
+                content_val = tail.replace('\\"', '"').replace('\\n', '\n').strip()
+        else:
+            content_val = c_m.group(1).replace('\\"', '"').replace('\\n', '\n').strip()
+
+        action_m = re.search(r'"action"\s*:\s*"([^"]+)"', raw_str)
+        target_m = re.search(r'"target_heading"\s*:\s*"([^"]*)"', raw_str)
+        title_m = re.search(r'"new_heading_title"\s*:\s*"([^"]*)"', raw_str)
+        level_m = re.search(r'"heading_level"\s*:\s*(\d+)', raw_str)
+        exp_m = re.search(r'"explanation"\s*:\s*"([^"]*)"', raw_str)
+
+        if action_m or content_val:
             return {
                 "action": action_m.group(1) if action_m else "add_new",
                 "target_heading": target_m.group(1) if target_m else "",
                 "new_heading_title": title_m.group(1) if title_m else None,
                 "heading_level": int(level_m.group(1)) if level_m else 2,
-                "updated_section_content": clean_content,
+                "updated_section_content": content_val or "",
                 "explanation": exp_m.group(1) if exp_m else "Updated document."
             }
     except Exception as e:
@@ -296,71 +314,69 @@ def extract_json_from_response(text: str) -> Any:
 def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     """
     Generic failsafe parser that dynamically converts ANY raw prompt input 
-    (chat transcripts, logs, code diffs, or instructions) into clean Markdown sections.
+    (chat transcripts, PR diffs, logs, scripts, or instructions) into clean Markdown sections.
     """
     instruction, payload = separate_instruction_and_payload(user_input)
     lines = payload.splitlines()
     sections = []
     
     chat_rows = []
-    diff_lines = []
+    file_diff_map = []
+    current_file = None
+    current_file_lines = []
     general_lines = []
-    
-    in_diff = False
+    pr_urls = []
+
+    file_pat = re.compile(r'((?:modules|projects|[a-zA-Z0-9_\-]+)/[A-Za-z0-9_\-\./]+\.[a-z0-9]+)', re.IGNORECASE)
+    sender_pat = re.compile(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35}\s+\((?:Contractor|Employee|User|Admin|Dev|QA)\))\s*[:\-\—]?\s*(.*)$', re.IGNORECASE)
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
+
+        if 'github.com' in stripped and '/pull/' in stripped:
+            found_urls = re.findall(r'https?://github\.com/[^\s]+', stripped)
+            pr_urls.extend(found_urls)
             
-        # Omit web diff UI noise headers
         if (
             stripped.startswith("Filter files") or 
             stripped.startswith("File tree") or 
             stripped.startswith("Original file line number") or 
             stripped.startswith("Lines changed:") or
-            stripped.startswith("=======================")
+            stripped.startswith("=======================") or
+            stripped.startswith("📝 Document Updated!") or
+            stripped.startswith("Updated file:") or
+            stripped.startswith("1 section headings")
         ):
             continue
-            
-        if stripped.startswith('diff --git') or stripped.startswith('--- a/') or stripped.startswith('+++ b/'):
-            in_diff = True
-            
-        if in_diff:
-            diff_lines.append(line)
-        else:
-            # Match participant pattern (e.g. "User Name (Contractor)", "User Name (Admin)")
-            chat_match = re.match(r'^([A-Z][A-Za-z0-9\s_\-\.]{2,35}\s+\((?:Contractor|Employee|User|Admin|Dev|QA)\))\s*[:\-\—]?\s*(.*)$', stripped, re.IGNORECASE)
-            if chat_match:
-                sender = chat_match.group(1).strip()
-                message_text = chat_match.group(2).strip()
-                if message_text:
-                    chat_rows.append((sender, message_text))
-                else:
-                    chat_rows.append((sender, ""))
-            else:
-                if chat_rows and chat_rows[-1][1] == "":
-                    prev_sender, _ = chat_rows[-1]
-                    chat_rows[-1] = (prev_sender, stripped)
-                else:
-                    general_lines.append(stripped)
 
-    # Separate standalone script code lines from plain notes
-    script_lines = []
-    plain_notes = []
-    
-    script_markers = [
-        '@echo off', 'setlocal', 'set "', 'goto ', 'echo [', 'if exist ', 'title ', 
-        'call "%gcloud%"', 'endlocal', 'exit /b', 'cls', '#!/bin/bash', 'def ', 
-        'import ', 'resource "', 'select ', 'from ', 'where ', 'var ', 'const ', 'function ',
-        'timeout /t', 'set /p', 'start "gcp'
-    ]
-    
-    for line in general_lines:
-        s_lower = line.strip().lower()
-        if any(marker in s_lower for marker in script_markers) or s_lower.startswith('::') or s_lower.startswith(':') or s_lower.startswith('echo.'):
-            script_lines.append(line)
+        file_match = file_pat.search(stripped)
+        if file_match and len(stripped) < 120 and not stripped.startswith('#') and not stripped.startswith('+') and not stripped.startswith('-'):
+            if current_file and current_file_lines:
+                file_diff_map.append((current_file, current_file_lines))
+            current_file = file_match.group(1).strip()
+            current_file_lines = []
+            continue
+
+        if current_file:
+            current_file_lines.append(line)
+            continue
+
+        chat_match = sender_pat.match(stripped)
+        if chat_match:
+            sender = chat_match.group(1).strip()
+            message_text = chat_match.group(2).strip()
+            chat_rows.append((sender, message_text))
         else:
-            plain_notes.append(line)
+            if chat_rows and chat_rows[-1][1] == "":
+                prev_sender, _ = chat_rows[-1]
+                chat_rows[-1] = (prev_sender, stripped)
+            else:
+                general_lines.append(line)
+
+    if current_file and current_file_lines:
+        file_diff_map.append((current_file, current_file_lines))
 
     section_counter = 1
 
@@ -380,37 +396,77 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             })
             section_counter += 1
 
-    # 2. Code Diff Patch Section
-    if diff_lines:
-        diff_code_block = "```diff\n" + "\n".join(diff_lines[:250]) + "\n```"
+    # 2. PR Reference & URLs
+    if pr_urls:
+        url_text = "The following Pull Request references were identified:\n\n"
+        for url in set(pr_urls):
+            url_text += f"- [{url}]({url})\n"
         sections.append({
-            "title": f"{section_counter}. Infrastructure Modifications & Diff Patch",
+            "title": f"{section_counter}. Pull Request References",
             "level": 2,
-            "content": diff_code_block
+            "content": url_text
         })
         section_counter += 1
 
-    # 3. Standalone Script Implementation Section
-    if script_lines:
-        script_code_block = (
-            "The following script was provided for automated environment execution:\n\n"
-            "```bat\n" + "\n".join(script_lines[:300]) + "\n```"
-        )
-        sections.append({
-            "title": f"{section_counter}. Automation Script Implementation",
-            "level": 2,
-            "content": script_code_block
-        })
-        section_counter += 1
+    # 3. File Diff Subsections
+    if file_diff_map:
+        for fname, f_lines in file_diff_map:
+            descriptive_lines = []
+            code_patch_lines = []
+            for fl in f_lines:
+                s_fl = fl.strip()
+                if s_fl.startswith('+') or s_fl.startswith('-') or s_fl.startswith('@@') or s_fl.startswith('diff ') or s_fl.startswith('index '):
+                    code_patch_lines.append(fl)
+                elif re.match(r'^\s*(local\.|module\.|resource\.|"|\#|\{|\[|\})', s_fl):
+                    code_patch_lines.append(fl)
+                else:
+                    descriptive_lines.append(fl)
 
-    # 4. Technical Notes & Details
-    if plain_notes:
-        sections.append({
-            "title": f"{section_counter}. Technical Notes & Overview",
-            "level": 2,
-            "content": "\n\n".join(plain_notes)
-        })
-        section_counter += 1
+            content_parts = []
+            if descriptive_lines:
+                content_parts.append("\n".join(descriptive_lines))
+            if code_patch_lines:
+                lang = "hcl" if fname.endswith('.tf') else ("bash" if fname.endswith('.sh') else "diff")
+                content_parts.append(f"```{lang}\n" + "\n".join(code_patch_lines) + "\n```")
+
+            sections.append({
+                "title": f"{section_counter}. File Modification: {fname}",
+                "level": 2,
+                "content": "\n\n".join(content_parts)
+            })
+            section_counter += 1
+
+    # 4. General Lines (Scripts or Notes)
+    if general_lines:
+        script_markers = [
+            '@echo off', 'setlocal', 'set "', 'goto ', 'echo [', 'if exist ', 'title ', 
+            'call "%gcloud%"', 'endlocal', 'exit /b', 'cls', '#!/bin/bash', 'def ', 
+            'import ', 'resource "', 'select ', 'from ', 'where ', 'var ', 'const ', 'function '
+        ]
+        script_lines = []
+        plain_notes = []
+        for line in general_lines:
+            s_lower = line.strip().lower()
+            if any(marker in s_lower for marker in script_markers):
+                script_lines.append(line)
+            else:
+                plain_notes.append(line)
+
+        if script_lines:
+            sections.append({
+                "title": f"{section_counter}. Automation Script Implementation",
+                "level": 2,
+                "content": "```bat\n" + "\n".join(script_lines) + "\n```"
+            })
+            section_counter += 1
+
+        if plain_notes:
+            sections.append({
+                "title": f"{section_counter}. Technical Notes & Overview",
+                "level": 2,
+                "content": "\n\n".join(plain_notes)
+            })
+            section_counter += 1
 
     if not sections:
         sections.append({

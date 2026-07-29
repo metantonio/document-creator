@@ -197,10 +197,17 @@ def read_document(filepath: str) -> Dict[str, Any]:
     }
 
 
+def sanitize_xml_text(text: str) -> str:
+    """Strips invalid XML 1.0 control characters to prevent python-docx XML errors."""
+    if not text:
+        return ""
+    return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+
 def render_inline_markdown(paragraph, text: str):
-    """Parse inline bold (**text**), italic (*text*), code (`code`), and link ([text](url)) into docx runs."""
+    """Parse inline bold (**text**), italic (*text*), code (`code`), link ([text](url)), and bare URLs into docx runs."""
     text = unescape_code_comments(text)
-    pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\[.*?\]\(.*?\))'
+    text = sanitize_xml_text(text)
+    pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\[.*?\]\(.*?\)|\bhttps?://[^\s<>"{}|\^~\[\]`]+)'
     tokens = re.split(pattern, text)
     
     for token in tokens:
@@ -217,10 +224,14 @@ def render_inline_markdown(paragraph, text: str):
             run.font.name = 'Consolas'
             run.font.size = Pt(9.5)
             run.font.color.rgb = RGBColor(71, 85, 105)
-        elif token.startswith('[') and ']' in token and '(' in token and token.endswith(')'):
-            link_text = token[1:token.index(']')]
-            url = token[token.index('(')+1:-1]
+        elif token.startswith('[') and ']' in token and '](' in token and token.endswith(')'):
+            link_text = token[1:token.index('](')]
+            url = token[token.index('](')+2:-1]
             run = paragraph.add_run(f"{link_text} ({url})")
+            run.font.color.rgb = RGBColor(5, 99, 193)
+            run.underline = True
+        elif token.startswith('http://') or token.startswith('https://'):
+            run = paragraph.add_run(token)
             run.font.color.rgb = RGBColor(5, 99, 193)
             run.underline = True
         else:
@@ -240,10 +251,10 @@ def escape_code_comments(text: str) -> str:
             escaped_lines.append(line)
             continue
             
-        if in_code_block and line.startswith('#'):
-            escaped_lines.append(line.replace('#', '__HASH_ESC__', 1))
+        if in_code_block and stripped.startswith('#'):
+            escaped_lines.append(re.sub(r'#', '__HASH_ESC__', line, count=1))
         elif not in_code_block and re.match(r'^\s*#(?:[\=\-\#\s]{2,}|[\-\_\.a-zA-Z0-9\/]+:|\s*\(.*?\))', line):
-            escaped_lines.append(line.replace('#', '__HASH_ESC__', 1))
+            escaped_lines.append(re.sub(r'#', '__HASH_ESC__', line, count=1))
         else:
             escaped_lines.append(line)
             
