@@ -32,9 +32,13 @@ Instructions & Strict Rules:
    - For any code changes, diffs, or infrastructure updates: Explain WHY the change was made, WHAT problem it solves, and HOW the technical mechanics work (e.g. proxy TLS decryption limits, GCS mirror fallbacks, cross-region latency, IAM grants).
    - Write clear explanatory prose and bullet points before presenting code snippets or tables.
 
-2. **CONVERSATION & TRANSCRIPT SYNTHESIS**:
-   - If the input contains team chat logs WITH identified participants/senders: Synthesize all requests into a clean Markdown Table: `| Requester | Request / Issue | Impacted Resource | Status | Resolution & Architectural Summary |`.
-   - CRITICAL: If the conversation does NOT identify explicit participants/senders (anonymous or unlabeled dialogue): Do NOT output a table with blank or 'Unknown' senders. Instead, author a concise **Brief Conversation Summary** with bullet points summarizing the core issues, questions, and resolutions discussed in that specific conversation.
+2. **CONVERSATION SYNTHESIS & TASK ASSIGNMENT TABLE BY PARTICIPANT**:
+   - Do NOT dump raw chat messages or message logs verbatim.
+   - Synthesize all team conversations into a structured **Task Assignment & Progress Table by Person**:
+     `| Participant / Member | Assigned Task / Request | Impacted Resource | Current Status (Completed / In Progress / Pending) | Progress & Resolution Details |`
+   - Explicitly evaluate whether each requested task is **Completed**, **In Progress**, or **Pending** based on the conversation context.
+   - (If the document is written in Spanish or requested in Spanish, use matching Spanish column titles and statuses: **Completado**, **En Progreso**, **Pendiente**).
+   - CRITICAL: If the conversation does NOT identify explicit participants/senders (anonymous or unlabeled dialogue): Do NOT output a table with blank or 'Unknown' senders. Instead, author a concise **Brief Conversation Summary** with bullet points summarizing the core issues, questions, and resolutions.
 
 3. **COLOR-CODED GIT DIFF & SCRIPT CODE BLOCKS**:
    - Format all code patches inside ```diff ``` code blocks with explicit + and - line markers.
@@ -162,7 +166,7 @@ Audit Checklist:
    - Remove duplicate or identical section headings.
 2. **CONTENT COHERENCE & SYNTAX**:
    - Clean up any unclosed code blocks or broken Markdown tables.
-   - Ensure all code diffs retain `+` and `-` markers inside ```diff ``` blocks.
+   - If team conversations exist, ensure they are formatted as a **Task Assignment & Progress Table by Person** (`| Participant / Member | Assigned Task / Request | Impacted Resource | Current Status | Progress & Resolution Details |` or Spanish equivalent) classifying tasks as **Completed** / **Completado**, **In Progress** / **En Progreso**, or **Pending** / **Pendiente**.
    - If a conversation section lacks identified participants/senders, verify it is presented as a **Brief Conversation Summary** with bullet points rather than a table with empty or 'Unknown' sender columns.
 3. **STRICT CLEANLINESS**:
    - Remove any conversational meta-filler (e.g., "Here is the document...", "Sure, I can help...", "en el pull request que está...").
@@ -541,15 +545,24 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
             for sender, _ in chat_rows
         )
         if has_identified_senders:
-            table_rows = ["| Participant / Sender | Message / Request Details |", "| :--- | :--- |"]
+            table_rows = ["| Participante / Integrante | Tarea / Solicitud Asignada | Estado Actual | Avance / Detalles de Resolución |", "| :--- | :--- | :--- | :--- |"]
             for sender, msg in chat_rows:
                 if msg:
                     clean_msg = msg.replace('|', '\\|')
-                    table_rows.append(f"| **{sender}** | {clean_msg} |")
+                    msg_lower = msg.lower()
+                    
+                    if any(kw in msg_lower for kw in ['done', 'completed', 'updated', 'merged', 'resuelto', 'listo', 'aplicado', 'creado', 'fixed']):
+                        status = "**Completado**"
+                    elif any(kw in msg_lower for kw in ['working', 'in progress', 'reviewing', 'pending', 'rebooting', 'probando', 'revisando', 'en proceso', 'verificando']):
+                        status = "**En Progreso**"
+                    else:
+                        status = "**Pendiente**"
+
+                    table_rows.append(f"| **{sender}** | {clean_msg} | {status} | Solicitud registrada en la conversación; requiere seguimiento técnico. |")
                     
             if len(table_rows) > 2:
                 sections.append({
-                    "title": f"{section_counter}. Communication & Team Request Log",
+                    "title": f"{section_counter}. Asignación de Tareas y Estado por Participante",
                     "level": 2,
                     "content": "\n".join(table_rows)
                 })
