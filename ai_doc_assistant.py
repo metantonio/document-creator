@@ -701,6 +701,86 @@ def fallback_parse_prompt_to_sections(user_input: str) -> List[Dict[str, Any]]:
     return sections
 
 
+def chunk_transcript_by_words(text: str, max_words: int = 900) -> List[str]:
+    """
+    Splits a raw chat transcript or long input string into logical chunks of ~800-1000 words.
+    Always breaks cleanly at message boundaries (e.g. double line breaks, speaker headers).
+    """
+    if not text or len(text.split()) <= max_words:
+        return [text] if text else []
+
+    # Split into message blocks (separated by double newlines or speaker headers)
+    blocks = re.split(r'\n\s*\n', text.strip())
+    if len(blocks) <= 1:
+        # Fallback to splitting by single line if no double newlines
+        blocks = text.strip().splitlines()
+
+    chunks = []
+    current_chunk = []
+    current_word_count = 0
+
+    for block in blocks:
+        block_words = len(block.split())
+        if current_word_count + block_words > max_words and current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+            current_chunk = [block]
+            current_word_count = block_words
+        else:
+            current_chunk.append(block)
+            current_word_count += block_words
+
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    return chunks
+
+
+def process_document_update_chunked(
+    filepath: str,
+    user_input: str,
+    chat_history: Optional[List[Dict[str, Any]]] = None,
+    provider: str = None,
+    progress_callback = None
+) -> Tuple[Dict[str, Any], str]:
+    """
+    Sequential Multi-Pass Chunk Processing Engine:
+    Splits large chat transcripts/clipboard inputs into ~900-word chunks at message boundaries,
+    and runs a sequential AI pass for each chunk to guarantee zero message loss in .docx.
+    """
+    word_count = len(user_input.split())
+    if word_count <= 1000:
+        return process_document_update(filepath, user_input, chat_history, provider, progress_callback)
+
+    chunks = chunk_transcript_by_words(user_input, max_words=900)
+    total_chunks = len(chunks)
+    
+    if total_chunks <= 1:
+        return process_document_update(filepath, user_input, chat_history, provider, progress_callback)
+
+    explanations = []
+    updated_doc = None
+
+    for idx, chunk in enumerate(chunks, 1):
+        if progress_callback:
+            progress_callback(
+                "generating", 
+                f"⚙️ Sequential Pass {idx}/{total_chunks}: Analyzing & appending conversation chunk (~{len(chunk.split())} words)..."
+            )
+
+        chunk_input = f"Teams Conversation Transcript Part {idx}/{total_chunks}:\n\n{chunk}"
+        updated_doc, exp = process_document_update(
+            filepath=filepath,
+            user_input=chunk_input,
+            chat_history=chat_history,
+            provider=provider,
+            progress_callback=None
+        )
+        explanations.append(f"Part {idx}/{total_chunks}: {exp}")
+
+    full_explanation = f"Sequential Multi-Pass complete: Processed {total_chunks} conversation chunks (~{word_count} words total).\n\n" + "\n".join(explanations)
+    return updated_doc, full_explanation
+
+
 def process_document_update(
     filepath: str,
     user_input: str,
