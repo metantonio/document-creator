@@ -520,6 +520,26 @@ function renderViewer() {
         if (currentViewerTab === 'preview') {
             if (typeof marked !== 'undefined' && currentDocData.full_text) {
                 contentDiv.innerHTML = marked.parse(currentDocData.full_text);
+                
+                // Render visual Mermaid architecture diagrams
+                if (typeof mermaid !== 'undefined') {
+                    setTimeout(() => {
+                        const codeBlocks = contentDiv.querySelectorAll('pre code.language-mermaid, pre code.lang-mermaid');
+                        codeBlocks.forEach(block => {
+                            const pre = block.parentElement;
+                            const graphDef = block.innerText;
+                            const dDiv = document.createElement('div');
+                            dDiv.className = 'mermaid';
+                            dDiv.innerText = graphDef;
+                            pre.replaceWith(dDiv);
+                        });
+                        try {
+                            mermaid.run({ nodes: contentDiv.querySelectorAll('.mermaid') });
+                        } catch (mErr) {
+                            console.error('Mermaid render error:', mErr);
+                        }
+                    }, 50);
+                }
             } else {
                 contentDiv.innerHTML = `<pre>${escapeHtml(currentDocData.full_text || '')}</pre>`;
             }

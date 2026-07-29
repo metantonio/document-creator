@@ -855,6 +855,43 @@ def process_document_update(
     return audited_doc, full_explanation
 
 
+def build_mermaid_diagram_from_context(import_graph: Dict[str, List[str]], repo_name: str) -> str:
+    """Generate a visual Mermaid flowchart diagram showing file-to-file relationships and imports."""
+    if not import_graph:
+        return ""
+        
+    lines = ["```mermaid", "graph TD", f"    subgraph {repo_name}_Architecture"]
+    nodes_added = set()
+    edges_added = set()
+
+    for file_path, imports in import_graph.items():
+        src_id = re.sub(r'[^a-zA-Z0-9_]', '_', file_path)
+        src_label = os.path.basename(file_path)
+        
+        if src_id not in nodes_added:
+            lines.append(f'        {src_id}["📄 {src_label}"]')
+            nodes_added.add(src_id)
+
+        for imp in imports:
+            imp_clean = imp.split(' import ')[-1].split(' as ')[0].replace("from ", "").replace("require(", "").replace(")", "").strip("'\" ")
+            if not imp_clean:
+                continue
+            target_id = re.sub(r'[^a-zA-Z0-9_]', '_', imp_clean)
+            
+            if target_id not in nodes_added:
+                lines.append(f'        {target_id}["📦 {imp_clean}"]')
+                nodes_added.add(target_id)
+
+            edge = (src_id, target_id)
+            if edge not in edges_added:
+                lines.append(f'        {src_id} --> {target_id}')
+                edges_added.add(edge)
+
+    lines.append("    end")
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def generate_repo_documentation(
     repo_input: str,
     target_filepath: str,
@@ -912,13 +949,33 @@ def generate_repo_documentation(
         )
 
         generated_sections = extract_json_from_response(llm_output)
+        if not isinstance(generated_sections, list):
+            generated_sections = []
+
+        # Guarantee Directory Tree Section
+        has_struct = any("directory" in s.get("title", "").lower() or "structure" in s.get("title", "").lower() for s in generated_sections)
+        if not has_struct and context.get("directory_tree"):
+            generated_sections.insert(1, {
+                "title": "Repository Directory Structure & File Map",
+                "level": 2,
+                "content": f"The repository filesystem hierarchy and directory tree structure is organized as follows:\n\n```\n{context['directory_tree']}\n```"
+            })
+
+        # Guarantee Visual Mermaid Flowchart Diagram Section
+        has_diagram = any("mermaid" in s.get("content", "").lower() or "graph" in s.get("title", "").lower() or "relationship" in s.get("title", "").lower() for s in generated_sections)
+        mermaid_diag = build_mermaid_diagram_from_context(context.get("import_graph", {}), context["repo_name"])
+        if not has_diagram and mermaid_diag:
+            generated_sections.insert(2, {
+                "title": "Component Dependency Graph & File Relationships",
+                "level": 2,
+                "content": f"The following visual Mermaid flowchart diagram maps out how source files interact and depend on each other:\n\n{mermaid_diag}"
+            })
 
         # 3. Read target document
         existing_doc = read_document(target_filepath)
         existing_sections = existing_doc["sections"]
 
-        if isinstance(generated_sections, list) and len(generated_sections) > 0:
-            # Smart section merging: check if titles overlap, or append
+        if len(generated_sections) > 0:
             final_sections = list(existing_sections)
             
             for gen_sec in generated_sections:
@@ -926,7 +983,6 @@ def generate_repo_documentation(
                 g_level = gen_sec.get("level", 2)
                 g_content = gen_sec.get("content", "")
 
-                # Check if existing document has a matching title
                 merged = False
                 for e_sec in final_sections:
                     if e_sec["title"].strip().lower() == g_title.strip().lower():
@@ -941,7 +997,7 @@ def generate_repo_documentation(
                     })
             
             save_updated_sections(target_filepath, existing_doc["format"], final_sections)
-            explanation = f"Generated Repository Technical Wiki for **{context['repo_name']}** and incorporated {len(generated_sections)} sections into **{existing_doc['filename']}**."
+            explanation = f"Generated Repository Technical Wiki for **{context['repo_name']}** with {len(generated_sections)} sections into **{existing_doc['filename']}**."
         else:
             # Fallback if raw text output
             fallback_sec = {

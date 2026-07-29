@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Mermaid.js for Visual Architecture Diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -400,6 +402,16 @@
                     </div>
                 </div>
             </div>
+
+            <div class="modal-footer flex-between">
+                <span class="text-subtle" id="configSaveStatus"></span>
+                <div>
+                    <button class="btn btn-secondary" onclick="closeModal('configModal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveConfiguration()"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: MICROSOFT TEAMS INTEGRATION -->
     <div class="modal-overlay" id="teamsModal">

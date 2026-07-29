@@ -10,6 +10,40 @@ from docx.shared import Pt, RGBColor
 def normalize_path(path: str) -> str:
     return os.path.abspath(path)
 
+def render_mermaid_to_png(mermaid_code: str) -> Optional[bytes]:
+    """Convert Mermaid diagram text to PNG image bytes via mermaid.ink / kroki.io API services."""
+    import urllib.request
+    import base64
+    
+    # Method 1: mermaid.ink (fast, high-resolution PNG)
+    try:
+        encoded = base64.b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
+        url = f"https://mermaid.ink/img/{encoded}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            if len(data) > 500:
+                return data
+    except Exception as e:
+        print(f"mermaid.ink render note: {e}")
+
+    # Method 2: kroki.io API fallback
+    try:
+        url = "https://kroki.io/mermaid/png"
+        headers = {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'User-Agent': 'DocCraft-AI-Assistant/1.0 (Windows)'
+        }
+        req = urllib.request.Request(url, data=mermaid_code.encode('utf-8'), headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            if len(data) > 500:
+                return data
+    except Exception as e:
+        print(f"kroki.io render note: {e}")
+
+    return None
+
 def list_all_documents(document_paths: List[str]) -> List[Dict[str, Any]]:
     """Scan configured document paths for .md, .txt, and .docx files."""
     documents = []
@@ -280,7 +314,7 @@ def render_markdown_body_to_docx(doc: Document, body_markdown: str):
             i += 1
             continue
             
-        # 1. Fenced Code Blocks (```python / ```diff / ```)
+        # 1. Fenced Code Blocks (```python / ```diff / ```mermaid / ```)
         if line.startswith('```'):
             code_lang = line.replace('```', '').strip().lower()
             i += 1
@@ -290,6 +324,23 @@ def render_markdown_body_to_docx(doc: Document, body_markdown: str):
                 i += 1
             if i < len(lines) and lines[i].startswith('```'):
                 i += 1
+
+            code_text_raw = unescape_code_comments("\n".join(code_lines)).strip()
+
+            # 1.1 Render Mermaid diagrams directly to PNG images for Word .docx
+            if code_lang == 'mermaid' and code_text_raw:
+                png_bytes = render_mermaid_to_png(code_text_raw)
+                if png_bytes:
+                    try:
+                        from io import BytesIO
+                        from docx.shared import Inches
+                        p_img = doc.add_paragraph()
+                        p_img.paragraph_format.space_before = Pt(6)
+                        p_img.paragraph_format.space_after = Pt(6)
+                        doc.add_picture(BytesIO(png_bytes), width=Inches(5.8))
+                        continue
+                    except Exception as img_err:
+                        print(f"Error embedding Mermaid PNG into docx: {img_err}")
 
             # Detect Git Diff format
             is_diff = (code_lang.startswith('diff')) or any(
