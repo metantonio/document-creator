@@ -14,7 +14,7 @@ import doc_service
 import chat_manager
 import teams_service
 import teams_desktop_service
-from ai_doc_assistant import process_document_update, generate_repo_documentation, ONBOARDING_GREETING
+from ai_doc_assistant import process_document_update, process_document_update_chunked, generate_repo_documentation, ONBOARDING_GREETING
 
 app = FastAPI(title="Technical Documentation Creator")
 
@@ -340,7 +340,7 @@ def send_message(chat_id: str, req: SendMessageRequest):
 
     # 3. Process document update with AI (passing chat history for conversational memory)
     try:
-        updated_doc, explanation = process_document_update(
+        updated_doc, explanation = process_document_update_chunked(
             filepath=active_doc_path,
             user_input=user_text,
             chat_history=chat.get("messages", []),
@@ -580,7 +580,7 @@ def capture_teams_desktop_endpoint(req: TeamsDesktopCaptureRequest):
         raise HTTPException(status_code=400, detail=transcript)
 
     try:
-        updated_doc, explanation = process_document_update(
+        updated_doc, explanation = process_document_update_chunked(
             filepath=active_doc_path,
             user_input=f"Microsoft Teams Desktop Capture:\n\n{transcript}",
             chat_history=chat.get("messages", []),
