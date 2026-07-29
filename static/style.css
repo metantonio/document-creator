@@ -438,6 +438,41 @@ body {
     word-break: break-word;
 }
 
+.thinking-card .message-content {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: var(--accent-primary);
+    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.15);
+    padding: 12px 16px;
+}
+
+.thinking-stage-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+    color: #e0e7ff;
+}
+
+.thinking-stage-item i {
+    color: var(--accent-primary);
+    font-size: 15px;
+}
+
+.text-accent {
+    color: var(--accent-primary);
+}
+
+.badge-generating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    background: rgba(99, 102, 241, 0.2);
+    color: #a5b4fc;
+    padding: 2px 6px;
+    border-radius: 12px;
+}
+
 .message-content p {
     margin: 0 0 6px 0;
 }

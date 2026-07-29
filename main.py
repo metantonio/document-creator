@@ -3,7 +3,9 @@ import shutil
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+import json
+import asyncio
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import config
@@ -208,7 +210,78 @@ def set_chat_document(chat_id: str, req: SetDocumentRequest):
         f"📂 Attached document **{doc_info['filename']}** to this conversation. Send me content to add or edit!",
         doc_update_info=doc_info
     )
-    return {"status": "success", "chat": chat_manager.get_chat(chat_id)}
+@app.post("/api/chats/{chat_id}/messages/stream")
+async def send_message_stream(chat_id: str, req: SendMessageRequest):
+    """Streaming endpoint that yields stage progress events (SSE) and final response."""
+    chat = chat_manager.get_chat(chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    user_text = req.text.strip()
+    if not user_text:
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+
+    chat_manager.add_chat_message(chat_id, "user", user_text)
+    active_doc_path = chat.get("active_doc_path")
+
+    if not active_doc_path or not os.path.exists(active_doc_path):
+        ai_reply = (
+            "Please select or create a document first before adding technical details.\n\n"
+            "You can:\n"
+            "• Click **Create New Document** below\n"
+            "• Select an **Existing Document** from the Library tab"
+        )
+        chat_manager.add_chat_message(chat_id, "assistant", ai_reply)
+        async def empty_stream():
+            yield f"data: {json.dumps({'type': 'done', 'chat': chat_manager.get_chat(chat_id)})}\n\n"
+        return StreamingResponse(empty_stream(), media_type="text/event-stream")
+
+    async def event_generator():
+        import queue
+        import threading
+        stage_queue = queue.Queue()
+
+        def on_progress(stage, message):
+            stage_queue.put({"type": "stage", "stage": stage, "message": message})
+
+        def run_processing():
+            try:
+                updated_doc, explanation = process_document_update(
+                    filepath=active_doc_path,
+                    user_input=user_text,
+                    chat_history=chat.get("messages", []),
+                    provider=req.provider,
+                    progress_callback=on_progress
+                )
+                chat_manager.add_chat_message(
+                    chat_id,
+                    "assistant",
+                    f"📝 **Document Updated!**\n\n{explanation}",
+                    doc_update_info=updated_doc
+                )
+            except Exception as e:
+                chat_manager.add_chat_message(
+                    chat_id,
+                    "assistant",
+                    f"❌ An error occurred while updating the document: {str(e)}"
+                )
+            stage_queue.put({"type": "done"})
+
+        thread = threading.Thread(target=run_processing)
+        thread.start()
+
+        while True:
+            await asyncio.sleep(0.1)
+            while not stage_queue.empty():
+                item = stage_queue.get()
+                if item["type"] == "done":
+                    final_chat = chat_manager.get_chat(chat_id)
+                    yield f"data: {json.dumps({'type': 'done', 'chat': final_chat})}\n\n"
+                    return
+                else:
+                    yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.post("/api/chats/{chat_id}/messages")
 def send_message(chat_id: str, req: SendMessageRequest):

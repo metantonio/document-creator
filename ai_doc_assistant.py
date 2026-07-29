@@ -191,7 +191,7 @@ Only return valid JSON inside a ```json ``` block.
 """
 
 
-def audit_and_refine_document(filepath: str, provider: str = None) -> Tuple[Dict[str, Any], str]:
+def audit_and_refine_document(filepath: str, provider: str = None, progress_callback = None) -> Tuple[Dict[str, Any], str]:
     """
     Automated Audit & Self-Correction Pass:
     1. Reads the newly generated/updated document.
@@ -199,6 +199,9 @@ def audit_and_refine_document(filepath: str, provider: str = None) -> Tuple[Dict
     3. Calls LLM Auditor to review overall logical coherence, formatting, and cleanliness.
     4. Re-saves the document to disk if any refinements were made.
     """
+    if progress_callback:
+        progress_callback("auditing", "🔍 Pase de Auditoría: Normalizando jerarquía de títulos y limpieza...")
+
     doc_info = read_document(filepath)
     sections = doc_info.get("sections", [])
     if not sections:
@@ -650,12 +653,16 @@ def process_document_update(
     filepath: str,
     user_input: str,
     chat_history: Optional[List[Dict[str, Any]]] = None,
-    provider: str = None
+    provider: str = None,
+    progress_callback = None
 ) -> Tuple[Dict[str, Any], str]:
     """
     Analyzes document headings, uses AI to decide merge vs new section, 
     incorporates chat history context, applies the update to disk, and returns (updated_doc_dict, explanation).
     """
+    if progress_callback:
+        progress_callback("analyzing", "⚡ Paso 1/4: Analizando insumos y estructura del documento...")
+
     instruction, payload = separate_instruction_and_payload(user_input)
     doc_info = read_document(filepath)
     sections = doc_info["sections"]
@@ -663,6 +670,9 @@ def process_document_update(
     # If the user input is large (> 2500 chars) or contains multi-file diffs/logs,
     # process full payload into structured sections to prevent truncation.
     if len(payload) > 2500 or any(kw in payload for kw in ['modules/', 'projects/', 'diff --git', '+++ b/']):
+        if progress_callback:
+            progress_callback("generating", "⚙️ Paso 2/4: Sintetizando secciones y formateando parches de código...")
+
         fallback_sec_list = fallback_parse_prompt_to_sections(user_input)
         
         # If existing document is empty or has a single placeholder, replace with full structured sections
@@ -673,9 +683,20 @@ def process_document_update(
                 sections.append(f_sec)
             
         save_updated_sections(filepath, doc_info["format"], sections)
-        audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider)
+
+        if progress_callback:
+            progress_callback("auditing", "🔍 Paso 3/4: Ejecutando auditoría de calidad y auto-corrección de formato...")
+
+        audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider, progress_callback=progress_callback)
+
+        if progress_callback:
+            progress_callback("rendering", "📝 Paso 4/4: Renderizando y guardando el archivo Word .docx final...")
+
         explanation = f"Structured technical documentation generated with {len(fallback_sec_list)} sections.\n\n{audit_msg}"
         return audited_doc, explanation
+
+    if progress_callback:
+        progress_callback("generating", "⚙️ Paso 2/4: Sintetizando secciones y formateando parches de código con la IA...")
 
     payload_for_prompt = payload
     
@@ -776,10 +797,16 @@ def process_document_update(
         if not inserted:
             updated_sections.append(new_sec)
 
-    updated_doc = save_updated_sections(filepath, doc_info["format"], updated_sections)
+    save_updated_sections(filepath, doc_info["format"], updated_sections)
     
-    # Automated Audit & Self-Correction Pass
-    audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider)
+    if progress_callback:
+        progress_callback("auditing", "🔍 Paso 3/4: Ejecutando auditoría de calidad y auto-corrección de formato...")
+
+    audited_doc, audit_msg = audit_and_refine_document(filepath, provider=provider, progress_callback=progress_callback)
+
+    if progress_callback:
+        progress_callback("rendering", "📝 Paso 4/4: Renderizando y guardando el archivo Word .docx final...")
+
     full_explanation = f"{explanation}\n\n{audit_msg}"
     return audited_doc, full_explanation
 

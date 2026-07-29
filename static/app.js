@@ -5,6 +5,7 @@ let activeDocumentPath = null;
 let currentDocData = null;
 let isViewerOpen = true;
 let currentViewerTab = 'preview';
+const activeGeneratingTasks = {}; // Tracks active background AI generation tasks by chatId
 
 // INITIALIZATION
 document.addEventListener('DOMContentLoaded', async () => {
@@ -120,10 +121,15 @@ function renderChatsList(chats) {
         item.setAttribute('data-chat-id', chat.id);
         item.onclick = () => selectChat(chat.id);
         
+        const isGenerating = activeGeneratingTasks[chat.id];
+        const statusBadge = isGenerating ? 
+            `<span class="badge-generating" title="${escapeHtml(isGenerating.message || 'Procesando con IA...')}"><i class="fa-solid fa-circle-notch fa-spin"></i> IA</span>` : '';
+
         item.innerHTML = `
             <div class="item-left">
                 <i class="fa-regular fa-message"></i>
                 <span class="item-title">${escapeHtml(chat.title)}</span>
+                ${statusBadge}
             </div>
             <button class="btn-icon-sm" onclick="event.stopPropagation(); deleteChat('${chat.id}')" title="Delete Chat">
                 <i class="fa-solid fa-trash-can"></i>
@@ -186,6 +192,10 @@ async function selectChat(chatId) {
 }
 
 async function deleteChat(chatId) {
+    if (activeGeneratingTasks[chatId]) {
+        alert('⚠️ Esta conversación tiene una tarea de IA en progreso. Por favor espere a que finalice antes de eliminarla.');
+        return;
+    }
     if (!confirm('Are you sure you want to delete this chat conversation?')) return;
     try {
         await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
@@ -243,60 +253,76 @@ function renderMessages(messages) {
 
     if (!messages || messages.length === 0) {
         if (emptyState) emptyState.style.display = 'flex';
-        return;
+    } else {
+        if (emptyState) emptyState.style.display = 'none';
+
+        messages.forEach(msg => {
+            try {
+                const row = document.createElement('div');
+                row.className = `message-row ${msg.sender}`;
+                
+                const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
+                let parsedText = formatMessageContent(msg.text);
+
+                let contentHtml = `
+                    <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
+                    <div class="message-content">
+                        <div>${parsedText}</div>
+                `;
+
+                // If onboarding greeting message, attach interactive choice buttons!
+                if (msg.is_onboarding && !activeDocumentPath) {
+                    contentHtml += `
+                        <div class="onboarding-actions">
+                            <button class="btn btn-primary" onclick="openCreateDocModal()">
+                                <i class="fa-solid fa-file-circle-plus"></i> Start New Document
+                            </button>
+                            <button class="btn btn-secondary" onclick="openSelectDocModal()">
+                                <i class="fa-solid fa-folder-open"></i> Edit Existing Document
+                            </button>
+                            <button class="btn btn-secondary" onclick="openRepoModal()">
+                                <i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki
+                            </button>
+                        </div>
+                    `;
+                }
+
+                // If document update info attached
+                if (msg.doc_update_info) {
+                    const doc = msg.doc_update_info;
+                    contentHtml += `
+                        <div class="doc-update-card">
+                            <i class="fa-solid fa-circle-check"></i> Updated file: <strong>${escapeHtml(doc.filename)}</strong>
+                            <br><small class="text-subtle">${doc.headings ? doc.headings.length : 0} section headings in document</small>
+                        </div>
+                    `;
+                }
+
+                contentHtml += `</div>`;
+                row.innerHTML = contentHtml;
+                container.appendChild(row);
+            } catch (e) {
+                console.error('Error rendering individual message:', e, msg);
+            }
+        });
     }
 
-    if (emptyState) emptyState.style.display = 'none';
-
-    messages.forEach(msg => {
-        try {
-            const row = document.createElement('div');
-            row.className = `message-row ${msg.sender}`;
-            
-            const avatarIcon = msg.sender === 'user' ? 'fa-user' : 'fa-robot';
-            let parsedText = formatMessageContent(msg.text);
-
-            let contentHtml = `
-                <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
-                <div class="message-content">
-                    <div>${parsedText}</div>
-            `;
-
-            // If onboarding greeting message, attach interactive choice buttons!
-            if (msg.is_onboarding && !activeDocumentPath) {
-                contentHtml += `
-                    <div class="onboarding-actions">
-                        <button class="btn btn-primary" onclick="openCreateDocModal()">
-                            <i class="fa-solid fa-file-circle-plus"></i> Start New Document
-                        </button>
-                        <button class="btn btn-secondary" onclick="openSelectDocModal()">
-                            <i class="fa-solid fa-folder-open"></i> Edit Existing Document
-                        </button>
-                        <button class="btn btn-secondary" onclick="openRepoModal()">
-                            <i class="fa-solid fa-bolt" style="color:var(--accent-warning);"></i> Analyze Repository Wiki
-                        </button>
-                    </div>
-                `;
-            }
-
-            // If document update info attached
-            if (msg.doc_update_info) {
-                const doc = msg.doc_update_info;
-                contentHtml += `
-                    <div class="doc-update-card">
-                        <i class="fa-solid fa-circle-check"></i> Updated file: <strong>${escapeHtml(doc.filename)}</strong>
-                        <br><small class="text-subtle">${doc.headings ? doc.headings.length : 0} section headings in document</small>
-                    </div>
-                `;
-            }
-
-            contentHtml += `</div>`;
-            row.innerHTML = contentHtml;
-            container.appendChild(row);
-        } catch (e) {
-            console.error('Error rendering individual message:', e, msg);
-        }
-    });
+    // Re-attach active stage thinking card if active generation in progress for this chat
+    if (currentChatId && activeGeneratingTasks[currentChatId]) {
+        const taskInfo = activeGeneratingTasks[currentChatId];
+        const thinkingRow = document.createElement('div');
+        thinkingRow.id = `thinkingRow_${currentChatId}`;
+        thinkingRow.className = 'message-row assistant thinking-card';
+        thinkingRow.innerHTML = `
+            <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+            <div class="message-content">
+                <div class="thinking-stage-item" id="stageText_${currentChatId}">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i> <span>${escapeHtml(taskInfo.message || 'Procesando con la IA...')}</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(thinkingRow);
+    }
 
     container.scrollTop = container.scrollHeight;
 }
@@ -306,8 +332,18 @@ async function sendMessage() {
     const text = chatInput.value.trim();
     if (!text || !currentChatId) return;
 
+    const targetChatId = currentChatId;
+
     chatInput.value = '';
     chatInput.style.height = 'auto';
+
+    // Register active background task
+    activeGeneratingTasks[targetChatId] = {
+        status: 'generating',
+        stage: 'analyzing',
+        message: '⚡ Paso 1/4: Analizando insumos y estructura del documento...'
+    };
+    fetchChats();
 
     // Optimistically render user message
     const container = document.getElementById('messagesContainer');
@@ -318,49 +354,93 @@ async function sendMessage() {
         <div class="message-content"><div>${formatMessageContent(text)}</div></div>
     `;
     container.appendChild(userRow);
-    container.scrollTop = container.scrollHeight;
 
-    // Show assistant thinking state
+    // Show dynamic multi-stage thinking card
     const thinkingRow = document.createElement('div');
-    thinkingRow.id = 'thinkingRow';
-    thinkingRow.className = 'message-row assistant';
+    thinkingRow.id = `thinkingRow_${targetChatId}`;
+    thinkingRow.className = 'message-row assistant thinking-card';
     thinkingRow.innerHTML = `
         <div class="avatar"><i class="fa-solid fa-robot"></i></div>
-        <div class="message-content"><i class="fa-solid fa-spinner fa-spin"></i> Analyzing document structure and processing update...</div>
+        <div class="message-content">
+            <div class="thinking-stage-item" id="stageText_${targetChatId}">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> <span>⚡ Paso 1/4: Analizando insumos y estructura del documento...</span>
+            </div>
+        </div>
     `;
     container.appendChild(thinkingRow);
     container.scrollTop = container.scrollHeight;
 
     try {
-        const res = await fetch(`/api/chats/${currentChatId}/messages`, {
+        const response = await fetch(`/api/chats/${targetChatId}/messages/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: text })
         });
-        const data = await res.json();
-        
-        // Remove thinking indicator
-        const thinkingEl = document.getElementById('thinkingRow');
-        if (thinkingEl) thinkingEl.remove();
 
-        if (res.ok && data && data.chat) {
-            activeDocumentPath = data.chat.active_doc_path;
-            updateActiveDocBadge();
-            renderMessages(data.chat.messages || []);
-            
-            if (activeDocumentPath) {
-                await loadDocumentContent(activeDocumentPath);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('data:')) {
+                    const jsonStr = trimmed.substring(5).trim();
+                    if (!jsonStr) continue;
+                    try {
+                        const event = JSON.parse(jsonStr);
+                        if (event.type === 'stage') {
+                            activeGeneratingTasks[targetChatId] = {
+                                status: 'generating',
+                                stage: event.stage,
+                                message: event.message
+                            };
+                            if (currentChatId === targetChatId) {
+                                const stageEl = document.getElementById(`stageText_${targetChatId}`);
+                                if (stageEl) {
+                                    stageEl.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>${escapeHtml(event.message)}</span>`;
+                                }
+                            }
+                            fetchChats();
+                        } else if (event.type === 'done') {
+                            delete activeGeneratingTasks[targetChatId];
+                            fetchChats();
+
+                            if (currentChatId === targetChatId && event.chat) {
+                                activeDocumentPath = event.chat.active_doc_path;
+                                updateActiveDocBadge();
+                                renderMessages(event.chat.messages || []);
+                                if (activeDocumentPath) {
+                                    await loadDocumentContent(activeDocumentPath);
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error parsing SSE payload:', err);
+                    }
+                }
             }
-            fetchChats();
-        } else {
-            console.error('Error in send_message endpoint:', data);
-            alert(`Error: ${data.detail || 'Could not process AI response.'}`);
         }
     } catch (e) {
         console.error('Error sending message:', e);
-        const thinkingEl = document.getElementById('thinkingRow');
-        if (thinkingEl) thinkingEl.remove();
-        alert(`Communication Error: ${e.message}`);
+        delete activeGeneratingTasks[targetChatId];
+        fetchChats();
+        if (currentChatId === targetChatId) {
+            const thinkingEl = document.getElementById(`thinkingRow_${targetChatId}`);
+            if (thinkingEl) thinkingEl.remove();
+            alert(`Communication Error: ${e.message}`);
+        }
     }
 }
 
